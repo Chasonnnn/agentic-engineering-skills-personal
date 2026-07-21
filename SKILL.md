@@ -77,6 +77,16 @@ Numbered findings `[P1]` must-fix / `[P2]` should-fix / `[NIT]`, each with
       moved code byte-similar, helper defaults match, error types preserved.
 - [ ] Commit per logic-group; reviewer-aware body (what, why safe, what pinned it,
       who implemented/reviewed); push only after a clean gate verdict.
+- [ ] **Batch pushes; watch CI with a cheap agent.** Push at checkpoints (a
+      slice-group lands, session end, before risky ops), not per-commit. After
+      every push, spawn a cheap-model watcher subagent (read-only) on the remote
+      CI runs: early-warn on first job failure, full per-job report at
+      conclusion. Route reds to the implementer CLI with the failure logs.
+      CI-infra-only fixes (workflow YAML, pins, flags) take a fast lane —
+      orchestrator micro-review instead of a full adversarial round; runner
+      flakes just get rerun. The watcher never fixes or pushes: unreviewed
+      fix-pushes onto a red compound it (every gate in the field session that
+      birthed this rule caught a real bug).
 - [ ] Never merge a branch while a delegate's uncommitted work sits in the
       checkout — commit or stash first.
 - [ ] Know the project's canonical suite invocations (some suites must run in their
