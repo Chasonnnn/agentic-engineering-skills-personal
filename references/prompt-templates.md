@@ -7,6 +7,17 @@ Every codex prompt is prepended with the **filesystem-boundary preamble** from
 `codex-recipes.md`. Subagent prompts carry the **six mandatory contents** from
 `subagent-recipes.md`.
 
+**Every SUBAGENT prompt ends with the delivery footer** (observed failure rate
+without it: 3 of 3 first-run agents went idle with the report stranded in their
+own transcript):
+
+```
+DELIVERY: your plain-text output is INVISIBLE to the orchestrator. Before you
+stop for any reason, deliver your report (or your blocker) by calling
+SendMessage with to: "main". Going idle without a SendMessage = you have
+delivered nothing.
+```
+
 ---
 
 ## (a) Codex implementer
