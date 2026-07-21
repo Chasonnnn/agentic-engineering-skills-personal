@@ -30,23 +30,38 @@ and "run the same thing at higher effort" all depend on having the exact prompt.
 
 ---
 
-## Reasoning-effort enum — CRITICAL GOTCHA
+## Reasoning-effort enum — CRITICAL GOTCHA (revised)
 
-The effort values are (verify per install): `none` / `minimal` / `low` /
-`medium` / `high` / `xhigh` / `max`.
+The documented effort values (from the API's own rejection message) are:
+`none` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`.
 
-**An unlisted value is silently coerced — not rejected.** Passing
-`model_reasoning_effort="ultra"` does **not** error; it quietly falls back, and you
-get a weaker run while believing you asked for a stronger one. Never pass a value
-you have not confirmed is in the enum.
+**The rejection-message enum is a FLOOR, not the full truth.** Verified
+2026-07-21 on gpt-5.6-sol: `model_reasoning_effort="ultra"` is absent from the
+400-error enum yet is ACCEPTED and HONORED — the request completes and burns an
+anomalously large reasoning-token count on a trivial prompt (~15k tokens for a
+one-word reply), and the Codex GUI exposes Ultra ("consumes usage limits
+faster"). An earlier version of this file claimed ultra was silently coerced;
+that was an inference from the enum listing, never round-tripped. Wrong.
 
-To discover the real enum on an install, **probe with a deliberately invalid
-value** and read the error — the API's rejection message enumerates the allowed
-set:
+Probe in two steps — never conclude from the error message alone:
 
-```bash
-codex exec -m <model> -c 'model_reasoning_effort="__bogus__"' -s read-only -C . - <<<'noop'
-```
+1. **Invalid-value probe** to get the documented floor:
+   ```bash
+   codex exec -m <model> -c 'model_reasoning_effort="__bogus__"' -s read-only -C . - <<<'noop'
+   ```
+   A 400 with `invalid_enum_value` lists the documented set.
+2. **Round-trip probe** for any candidate beyond the floor (e.g. `ultra`):
+   ```bash
+   echo 'reply with exactly: PROBE-OK' | codex exec -m <model> -c 'model_reasoning_effort="ultra"' -s read-only -C . -
+   ```
+   A 400 → genuinely invalid. A completed reply → honored; anomalously high
+   `tokens used` for a trivial prompt confirms a real heavier tier (a silent
+   coercion to a lower tier would burn few tokens).
+
+Policy under this skill: default `xhigh`; use `ultra` at the orchestrator's
+discretion for **large batches or genuinely hard single tasks** (hardest
+concurrency implementations, make-or-break design second opinions, final
+adversarial verification). It consumes usage limits materially faster.
 
 ---
 

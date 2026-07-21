@@ -23,7 +23,7 @@ commits — and never burns its context writing code a delegate could write.
 | Role | Default | Does | Never does |
 |---|---|---|---|
 | **Orchestrator** | the main session (most capable/expensive model) | plans, decides *with the user*, delegates, reviews every delegate diff, assembles/integrates, runs suites, commits & pushes, keeps memory | writes substantive code (trivial one-liners exempt) |
-| **Codex CLI** | `codex exec`, gpt-5.6-sol @ xhigh | token-heavy backend implementation; independent second opinion on large plans/specs | review its own implementation; edit tests it was told not to |
+| **Codex CLI** | `codex exec`, gpt-5.6-sol @ xhigh (`ultra` at orchestrator discretion for large batches / hardest tasks) | token-heavy backend implementation; independent second opinion on large plans/specs | review its own implementation; edit tests it was told not to |
 | **Subagent** | Claude Opus @ xhigh (judge stages @ max) | frontend, design taste, repo audits, research fan-outs, TDD test authoring, adversarial review | push; edit outside its track |
 
 Rationale: the orchestrator is expensive and smart; delegates are cheaper and
