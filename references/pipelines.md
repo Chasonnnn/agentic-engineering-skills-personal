@@ -43,12 +43,35 @@ This is not ceremony. A real re-gate on a fix round surfaced **three new P1s**:
 
 None existed before the fix. Skipping the re-gate would have shipped all three.
 
+### Running the loop (multi-round mechanics)
+
+- **Fresh angles every round.** A re-gate prompt that only says "verify the fixes"
+  finds nothing; write new attack vectors per round (isolation-level races after a
+  locking fix, legacy data shapes after a re-key, consumer sweeps after a serving
+  change). The subtlety of findings should *increase* per round — that's the gate
+  digging, not failing.
+- **Embed decisions in the routing.** When a reviewer offers "fix A or fix B,"
+  the orchestrator resolves the fork **in the fix-round message** ("DECISION: …").
+  Routing findings without decisions buys an extra round when the implementer
+  picks the wrong branch silently.
+- **Track convergence.** Findings-per-round should fall (a real sequence: 8 → 5 →
+  4 → …). Flat or rising counts after round 3 mean the approach is wrong, not the
+  execution — stop the loop, reassess the design, or escalate to the user.
+- **Evidence for the cross-model rule:** in one working day the gate caught bugs
+  in *both directions* — codex found a subagent's concurrency holes across four
+  rounds; a subagent found codex's legacy-data regression plus a test rigged to
+  miss it. Same-family review would likely have caught neither.
+
 ---
 
 ## 2. TDD pipeline (backend features)
 
 Order is fixed. The point is that **the implementation never gets to define its own
 success criteria.**
+
+**Red-tests sequencing in commit-to-main repos** (green-push gate, no PRs): commit
+the failing tests LOCALLY first as their own logic-group, implement on top, push
+only when the whole set is green. TDD discipline without ever publishing red.
 
 1. **Test-author subagent** writes FAILING tests **plus an interface-contract
    doc** — every name, signature, and exception the tests import, with any open

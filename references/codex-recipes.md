@@ -102,6 +102,18 @@ ls -la err.txt && tail -c 400 err.txt   # mtime + recent activity
 
 ---
 
+## Parallel codex runs
+
+Two codex processes on the same repo are safe when at most one is
+`workspace-write` — a read-only review can run alongside an implementation.
+One mandatory clause when the working tree is dirty (the parallel task's
+uncommitted work): the review prompt must pin itself to **git objects only** —
+"review `git diff <a>...<b>` / `git show`; NEVER read the working tree." Without
+it the reviewer reads half-finished parallel work as if it were the change under
+review.
+
+---
+
 ## Evidence discipline
 
 Ask for **per-criterion evidence with real output** — suite tails, pass/fail

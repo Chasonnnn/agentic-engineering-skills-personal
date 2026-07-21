@@ -63,6 +63,17 @@ git -C <worktree> status --short
 git -C <worktree> diff --stat main...HEAD
 ```
 
+Two more delivery realities:
+
+- **Duplicate delivery is normal.** The same result often arrives 2–3 times
+  (SendMessage report + task-completion notification + idle pings). Act on the
+  FIRST arrival; treat repeats as no-ops — never re-dispatch work because a
+  duplicate landed.
+- **Helper reports route to the top.** When a delegate spawns its own helper,
+  the helper's completion report lands with the TOP orchestrator, not its parent.
+  Relay the substance to the parent agent with directives — the parent may not
+  know its own helper finished.
+
 ---
 
 ## Naming and the scoreboard

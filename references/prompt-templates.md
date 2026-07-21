@@ -69,8 +69,15 @@ CHECK (attack, don't rubber-stamp):
 - Correctness against the frozen interface: <interface>.
 - Error paths, edge cases, concurrency/late-writer races, orphaned rows after
   migrations, read paths that bypass new joins/constraints.
+- RE-KEY AUDIT: if the diff changes how anything is identified/discriminated
+  (a key, marker, approver, enum), enumerate every EXISTING artifact identified
+  the old way — legacy rows, published records, fixtures — and prove each still
+  behaves. New-data-correct + legacy-data-broken is the classic re-key failure.
+- ATTACK THE TESTS: for each test, check what it actually EXERCISES vs what its
+  name claims — a test that injects the very condition whose absence it should
+  cover, or that never reaches the code path (missing flag/config), is asserting
+  a false guarantee. Report rigged tests as findings.
 - No hidden fallbacks; failures are explicit.
-- Tests actually exercise the behavior (not tautological / not skipped).
 
 OUTPUT CONTRACT (exact):
 - Numbered findings, each `[P1]` (must-fix) / `[P2]` (should-fix) / `[NIT]`,
@@ -141,6 +148,13 @@ DO BOTH:
    resolved — not merely silenced. Cite the fixing `file:line`.
 2. Attack the NEW code with FRESH angles — treat the fix diff as new surface:
    races, bypassed constraints, orphaned rows, changed observable behavior.
+   Write NEW attack vectors for this round (isolation-level races after a locking
+   fix; legacy shapes after a re-key; lock-ordering after a new lock) — do not
+   re-run round N-1's checklist and call it a re-gate.
+
+[When routing this round's findings onward, the ORCHESTRATOR adds a DECISION
+line resolving every either/or the reviewer offered — never leave forks to the
+implementer's silent choice.]
 
 OUTPUT CONTRACT (exact):
 - Per prior finding: RESOLVED / NOT-RESOLVED + `file:line`.
