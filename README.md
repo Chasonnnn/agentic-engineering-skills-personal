@@ -18,6 +18,7 @@ New machines: repeat both steps. Updating: `git -C ~/claude-skills pull` (symlin
 | Skill | What it does |
 | --- | --- |
 | [board-sync](board-sync/SKILL.md) | Sync planning state (specs/ADRs/roadmap) to a GitHub Project board as epic issues with nested sub-issues — epics on the board, slices hidden under them — plus an optional stale-issue refresh. |
+| [orchestrate](orchestrate/SKILL.md) | Multi-model orchestration: the main session plans/reviews/commits while codex + subagents implement, with cross-model review gates. (Folded in from `orchestrate-skill` with history; that repo is archived.) |
 
 ## Conventions
 
