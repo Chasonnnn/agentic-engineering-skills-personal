@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub PR Validation Loop"
+  short_description: "Audit PRs, validate fixes, and close noise"
+  default_prompt: "Use $github-pr-validation-loop to audit open pull requests, validate each finding against current main, implement clean fixes when valid, and close duplicates or invalid PRs."
