@@ -1,4 +1,4 @@
-# claude-skills
+# agentic-engineering-skills-personal
 
 Private collection of reusable Claude Code skills, shared across projects.
 
@@ -7,11 +7,12 @@ Private collection of reusable Claude Code skills, shared across projects.
 Clone once, then symlink each skill into the personal skills directory:
 
 ```sh
-git clone git@github.com:Chasonnnn/claude-skills.git ~/claude-skills
-ln -s ~/claude-skills/board-sync ~/.claude/skills/board-sync
+git clone git@github.com:Chasonnnn/agentic-engineering-skills-personal.git ~/agentic-engineering-skills-personal
+ln -s ~/agentic-engineering-skills-personal/board-sync ~/.claude/skills/board-sync
+ln -s ~/agentic-engineering-skills-personal/orchestrate ~/.claude/skills/orchestrate
 ```
 
-New machines: repeat both steps. Updating: `git -C ~/claude-skills pull` (symlinks pick up changes automatically).
+New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-personal pull` (symlinks pick up changes automatically).
 
 ## Skills
 
