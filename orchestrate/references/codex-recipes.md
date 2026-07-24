@@ -15,7 +15,8 @@ codex exec -m <model> \
   -c 'model_reasoning_effort="xhigh"' \
   -s read-only \
   -C <repo-root> \
-  - < prompt.txt > out.md 2> err.txt   # run in background
+  --json \
+  - < prompt.txt > out.jsonl 2> err.txt   # run in background
 ```
 
 - `-m <model>` — e.g. `gpt-5.6-sol`.
@@ -23,6 +24,13 @@ codex exec -m <model> \
 - `-s` — sandbox: `read-only` for review/investigation, `workspace-write` for
   implementation (see below).
 - `-C <repo-root>` — run from the repo root regardless of cwd.
+- `--json` — **always.** Streams JSONL events (file reads, edits, commands,
+  agent messages) to stdout as they happen, so liveness checks answer "what is
+  it doing" instead of "is the pid alive." Costs nothing in attention: the
+  orchestrator still gets one completion notification; the event file is only
+  tailed on demand (never read whole — reasoning deltas make it large). Extract
+  the final report from the last agent-message event (verify the exact event
+  shape once per codex version) rather than expecting buffered markdown.
 - `- < prompt.txt` — read the prompt from stdin; keep the file, you will reuse it.
 
 Save every prompt to a file. Re-gates, relaunches after a dead background process,
@@ -104,15 +112,22 @@ it to review.
 
 ## Liveness — background processes
 
-- Codex **streams activity to stderr.** A **growing `err` file** means it is alive.
-  The **`out` file stays empty until completion** — an empty `out` is not a hang.
+- With `--json` (the default above), a **growing `out.jsonl`** is the primary
+  liveness signal and `tail -2 out.jsonl` shows the current activity. The `err`
+  stream remains a secondary signal (non-json runs stream activity there; their
+  `out` file stays empty until completion — an empty `out` alone is not a hang).
+- **Alive-but-silent is a hang.** A live pid whose event stream has not grown
+  for many minutes is stalled, not thinking: even at xhigh, codex interleaves
+  tool calls that would show as events. Kill and relaunch from the saved prompt
+  file. (Field hit: a buffered run sat 69+ minutes with a live pid, zero stream
+  growth, zero file writes — unobservable precisely because it lacked `--json`.)
 - **Background processes DIE on session restart.** On resume/compaction, **before**
-  reporting a task as "still running", check the **err-file mtime and size**. If it
+  reporting a task as "still running", check the **event-file mtime and size**. If it
   stopped growing and the process is gone, the task is dead — **relaunch from the
   saved prompt file.**
 
 ```bash
-ls -la err.txt && tail -c 400 err.txt   # mtime + recent activity
+ls -la out.jsonl && tail -2 out.jsonl   # mtime + current activity
 ```
 
 ---

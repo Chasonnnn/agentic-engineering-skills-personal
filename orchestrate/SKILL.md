@@ -75,6 +75,16 @@ Numbered findings `[P1]` must-fix / `[P2]` should-fix / `[NIT]`, each with
 - [ ] Review **every** delegate diff before committing. For extractions/refactors:
       line-by-line against the pre-change original via `git show <base>:<file>` —
       moved code byte-similar, helper defaults match, error types preserved.
+- [ ] **Scope-of-effect check** before declaring a behavior change complete:
+      enumerate the production call sites that must exercise it and verify each
+      passes input of the shape/scope the change needs; require one integration
+      test through the deployed entry point. Label layer-local eval numbers
+      (rule-layer, unit-level) as such — never present them as expected
+      deployment deltas until an e2e run confirms propagation. Reviewer gates
+      verify the diff-in-scope; only the orchestrator owns the seams.
+      *Prevents:* unit-correct changes that silently no-op in production (field
+      hit: a multi-line rule fed single-line segments by its deployed call
+      site — every gate passed, deployment saw nothing).
 - [ ] Commit per logic-group; reviewer-aware body (what, why safe, what pinned it,
       who implemented/reviewed); push only after a clean gate verdict.
 - [ ] **Batch pushes; watch CI with a cheap agent.** Push at checkpoints (a
