@@ -1,6 +1,6 @@
 # Pipelines
 
-The six protocols in operational detail. Each is a sequence with an explicit
+The seven protocols in operational detail. Each is a sequence with an explicit
 gate; none is optional for the class of work it covers.
 
 ---
@@ -89,6 +89,26 @@ only when the whole set is green. TDD discipline without ever publishing red.
 4. **Adversarial review** (cross-model gate, §1).
 5. **Orchestrator commits per logic-group.**
 
+### Small-slice variant (gate-verified TDD)
+
+The full pipeline costs a dedicated test-author round. For **small slices** — a
+bounded fix group, one setting plus plumbing, a single-seam change — an
+implementer-authored variant is acceptable:
+
+- the implementer writes the failing tests FIRST and pastes the **red tails**
+  (fail-for-the-right-reason evidence) in its report, then implements to green;
+- the adversarial gate carries the test-integrity check **explicitly**: no
+  assertion weakened, no test edited to pass, tests pin the stated behavior —
+  the tests are first-class attack surface, not an afterthought.
+
+The separation of powers moves from author-vs-implementer to
+implementer-vs-gate. Use the **full** pipeline when the slice is large, the
+interface is contested, or the implementer defining its own tests is the fox
+guarding the henhouse (scoring logic, security boundaries, anything it has an
+incentive to under-test). Field evidence (2026-07-26/27): five consecutive fix
+branches ran the variant — failing-first tails in every report, gates checking
+test integrity every round — ~20 commits, zero weakened-assertion findings.
+
 ---
 
 ## 3. Parallel tracks + assembly
@@ -175,3 +195,65 @@ Not every decision is the orchestrator's to make.
 The failure this prevents: burning a round-trip asking the user about something
 reversible and low-stakes, *and* the opposite — silently making an
 architecture-shaping call the user needed to own.
+
+---
+
+## 7. Operational-run pipeline (live systems, no code changes)
+
+For delegate runs that **operate** the system rather than change it — stand up a
+stack, run a live generation/ingestion sweep, execute a runbook, produce an
+evidence record. Not implementation (nothing to diff), not review (nothing to
+verdict), so pipelines 1–6 don't cover them — and the failure modes are
+different: improvised recovery corrupting live state, partial success reported
+as success, orphaned services, outcomes that exist only in a chat transcript.
+
+Every operational prompt carries, without exception (template (f) in
+`prompt-templates.md`):
+
+1. **Hard stop conditions, enumerated per anticipated failure shape.** "A
+   single item's failure stops the sweep at that item; capture X verbatim and
+   report." The delegate's best moments come from these clauses — field run
+   2026-07-26: the agent stopped at a `failed_permanent` job and reported
+   instead of improvising a workaround, *because* the prompt said "a fresh
+   submit needs an override — an orchestrator decision, do not improvise one."
+2. **Verbatim-evidence capture.** Exact error text, full status rows, validator
+   tails. The orchestrator diagnoses from the record; a paraphrase is not
+   evidence. (Field payoff: a quoted 6-gram in one error string localized a
+   fix to a single missing function word.)
+3. **Recovery is the orchestrator's decision.** The delegate reports and stops;
+   name the specific forbidden improvisations (resubmit, hand-edit DB state,
+   retry with different flags, reclaim a dead job).
+4. **A canonical run-record file the delegate owns** — per-item ids, statuses,
+   outcomes, reviewer first-look notes, with explicit superseding language.
+   State lives in the record, not the transcript; successive runs UPDATE it,
+   keeping prior success entries.
+5. **Started-vs-inherited accounting + cleanup.** What the delegate started vs
+   what was already running; stop everything it started; verify ports free and
+   say so; name the shared infra that stays up.
+6. **Repo hygiene assertion.** `git status --short --branch` before and after;
+   operational runs must not mutate tracked files; anything unexpected is
+   reported and left uncommitted.
+
+Sequencing with fix loops: a live failure routes into the normal
+implement→gate→merge pipeline, then the **next** operational run is a fresh
+prompt derived from the previous one (same saved file, updated commit / done-ids
+/ stop conditions). Keep every run's prompt and report — the Nth prompt is a
+small edit of the (N−1)th, and the done-list must grow monotonically so
+completed items are never resubmitted.
+
+### The second-occurrence sweep rule
+
+When two live failures share a defect **class** (not just a symptom — e.g. "a
+validator enforces a contract the generation prompt never states"), stop
+iterating incident-by-incident: dispatch a **class-wide audit** — one read-only
+pass enumerating every instance of the class — and fix them in one gated round.
+Field evidence (2026-07-26/27): the instruction/validator-gap class surfaced
+**five times** across a live mint pipeline (grounding vocabulary, scaffolding
+blocklist, reviewer-overlap rule, rubric echo, one missing preposition), each
+discovered one ~50-minute live cycle at a time; a sweep after occurrence two
+would have saved roughly two full cycles. The eventual fix that ended the
+tail — replacing one-word-per-incident connective additions with the closed
+function-word class, once, gated — is the same rule applied to the fix itself.
+
+*Prevents:* improvised recovery on live state; silent partial success; orphaned
+processes; per-incident whack-a-mole on a class-shaped problem.

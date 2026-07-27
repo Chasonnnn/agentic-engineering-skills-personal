@@ -90,6 +90,17 @@ use it.
   the message body. Codex never commits; that keeps the review gate in front of
   every commit.
 
+### Known macOS sandbox wart: the uv cache
+
+`workspace-write` sandboxing on macOS blocks `~/.cache/uv`
+(`failed to open file …/sdists-v9/.git: Operation not permitted`), so any stack
+launcher or make-target that shells out to `uv` fails on its first sandboxed
+attempt. This is expected, not a task failure — pre-authorize the retry in the
+prompt: *"if the sandboxed launcher hits the uv-cache permission error, rerun it
+outside the sandbox and note it."* Field record: hit on 5 consecutive
+operational runs (2026-07-26/27); each agent burned a retry rediscovering it
+until the prompt named it.
+
 ---
 
 ## Filesystem-boundary preamble (always prepend)

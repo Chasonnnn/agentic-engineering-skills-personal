@@ -1,7 +1,8 @@
 # Prompt templates
 
 Copy-paste skeletons. Fill every `<…>`. Placeholders in `[brackets]` are optional.
-All five assume the orchestrator has already frozen the interface.
+The implementation-facing skeletons (a)–(e) assume the orchestrator has already
+frozen the interface; (f) is operational and has no interface to freeze.
 
 Every codex prompt is prepended with the **filesystem-boundary preamble** from
 `codex-recipes.md`. Subagent prompts carry the **six mandatory contents** from
@@ -168,4 +169,51 @@ OUTPUT CONTRACT (exact):
 - New numbered findings `[P1]/[P2]/[NIT]` with `file:line` + concrete fix.
 - One line per passing check.
 - Final line, exactly: `VERDICT: MERGE` (or `PUSH`) or `VERDICT: FIX-FIRST`.
+```
+
+---
+
+## (f) Operational run (live system, no code changes — pipelines §7)
+
+Derive run N+1 from run N's saved prompt file: update the commit, the done-list
+(monotonically growing — completed items are never resubmitted), and the stop
+conditions learned from the last failure.
+
+```
+[filesystem-boundary preamble]
+
+MISSION: <operate the system: run the sweep / execute the runbook> against
+<repo at commit>. You do NOT <publish/approve/deploy> — that requires <the
+named human gate> and stays untouched.
+
+CONTEXT: <what changed since the last run>. Already DONE and must NOT be
+touched or resubmitted: <exact ids>. Read <run-record path> — you will UPDATE
+it, keeping prior success entries.
+
+PROCEDURE (hard stop conditions inline):
+1. Stand up <stack>; record what YOU started vs what was already running.
+   [Known wart: <e.g. sandboxed uv-cache error → rerun outside the sandbox
+   once and note it>.]
+2. <Readiness check> must PASS; otherwise STOP and report the error verbatim.
+3. Do NOT touch: <dead jobs / stale state — exact ids>.
+4. <Step> — on failure: capture <the exact rows/fields> VERBATIM, STOP the
+   sweep, report. Do not improvise recovery (<name the forbidden moves:
+   resubmit, hand-edit state, retry with different flags, reclaim>) —
+   recovery is an orchestrator decision.
+5. <Per-item loop, with the single-item-failure-stops-the-sweep rule and
+   what to capture per item: ids, counts, validator tails>.
+6. <Final verification against the live API — enumerate what "correct" looks
+   like, e.g. status/approver/publication fields per item>.
+7. UPDATE <run-record path>: per item — id, status, outcomes, what a reviewer
+   should look at first; note it supersedes <prior records>.
+8. CLEANUP: stop everything you started (<list>); <shared infra> stays up.
+   Verify <ports> free and say so.
+
+REPO HYGIENE: `git status --short --branch` before and after; this run must
+not mutate tracked files — anything unexpected is reported and left
+uncommitted. Commit nothing, push nothing. Never print secret values — env
+var names only.
+
+REPORT: per item — outcome + evidence verbatim; started/stopped accounting +
+port verification; errors verbatim; path to the updated record.
 ```

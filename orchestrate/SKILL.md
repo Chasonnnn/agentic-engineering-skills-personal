@@ -44,8 +44,10 @@ Each earns its place by the failure it prevents. Full detail in
 2. **TDD pipeline (backend)** — test-author subagent writes FAILING tests + an
    interface-contract doc against a frozen interface; orchestrator reviews the
    contract; codex implements to green and **may not edit tests**; adversarial
-   review; commit per logic-group. *Prevents:* implementation that defines its
-   own success criteria.
+   review; commit per logic-group. Small slices may run the implementer-authored
+   variant: failing tests first with red tails in the report, and the gate
+   attacks test integrity explicitly (pipelines §2). *Prevents:* implementation
+   that defines its own success criteria.
 3. **Parallel tracks + assembly** — independent tracks run at once (subagents in
    isolated worktrees committing locally; codex in the main checkout leaving work
    **uncommitted**). Freeze names/ids before dispatch; agents "flag loudly rather
@@ -63,6 +65,13 @@ Each earns its place by the failure it prevents. Full detail in
 6. **User decision protocol** — decisions shaping scope/architecture/timeline go
    to the user as structured questions with a **recommended** option; record them
    in the plan/memory. Everything else the orchestrator decides and reports.
+7. **Operational-run pipeline (live systems)** — delegate runs that operate the
+   system rather than change it (stack up, live sweeps, runbooks) carry
+   enumerated hard-stop conditions, verbatim-evidence capture, a canonical
+   run-record file, started-vs-inherited cleanup accounting, and the rule that
+   recovery is an orchestrator decision — the delegate stops and reports, never
+   improvises a resubmit or state edit. *Prevents:* improvised recovery on live
+   state; partial success reported as success; orphaned services.
 
 ## Reviewer output contract (every gate)
 
@@ -103,16 +112,23 @@ Numbered findings `[P1]` must-fix / `[P2]` should-fix / `[NIT]`, each with
       own process — mixed collections produce phantom failures).
 - [ ] Fixture bugs in delegate tests are **assembly work** — diagnose and fix
       directly, don't round-trip.
+- [ ] **Second-occurrence sweep:** when two failures share a defect class, stop
+      fixing incidents one at a time — dispatch a class-wide audit and fix every
+      instance in one gated round. (Field hit: five instruction/validator-gap
+      incidents fixed serially at ~50 min per live cycle; a sweep after #2 would
+      have saved two cycles. Detail in pipelines §7.)
 - [ ] On resume/compaction: re-verify every "running" background task's liveness
       before reporting status (background procs die on session restart).
 - [ ] Record durable decisions + gotchas to memory as they happen.
 
 ## References
 
-- `references/pipelines.md` — the six pipelines in operational detail.
+- `references/pipelines.md` — the seven pipelines in operational detail.
 - `references/codex-recipes.md` — codex CLI invocation, enums, sandbox, liveness.
-- `references/subagent-recipes.md` — worktrees, messaging, prompt requirements.
-- `references/prompt-templates.md` — implementer / reviewer / TDD / content / re-gate skeletons.
+- `references/subagent-recipes.md` — worktrees, messaging, prompt requirements,
+  headless `claude -p` gates.
+- `references/prompt-templates.md` — implementer / reviewer / TDD / content /
+  re-gate / operational-run skeletons.
 
 ## Per-project adaptation
 

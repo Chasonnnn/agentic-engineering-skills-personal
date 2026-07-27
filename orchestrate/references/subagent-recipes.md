@@ -93,6 +93,33 @@ Two more delivery realities:
 
 ---
 
+## Headless CLI gates (`claude -p`) — the alias-tracking alternative
+
+When gates must run on "the newest \<model\>" and the Agent-tool registry is
+version-pinned or mid-session stale, run the reviewer as a headless CLI call
+with a **model alias** — never a version pin; aliases auto-track releases:
+
+```bash
+cd <worktree> && claude -p --model opus \
+  --allowedTools "Read" "Glob" "Grep" \
+    "Bash(git diff:*)" "Bash(git show:*)" "Bash(git log:*)" \
+    "Bash(rg:*)" "Bash(grep:*)" \
+  < gate_prompt.txt > gate_out.md 2> gate_err.txt   # run in background
+```
+
+- **The allowlist IS the read-only sandbox**: inspection tools plus git-object
+  commands only — the reviewer cannot mutate the tree and never stalls on a
+  permission prompt mid-review.
+- Same saved-prompt-file discipline as codex: re-gates rerun the exact file.
+- Reviewer output contract unchanged (`[P1]/[P2]/[NIT]` + VERDICT line).
+- Run it **from the worktree under review** so relative paths in findings
+  resolve.
+- Field record (2026-07-26/27): 6/6 gate rounds in one session ran this way,
+  every round producing verdict-grade findings — including a P1 proven by
+  constructing a working exploit from live manifest data.
+
+---
+
 ## Research fan-out (for the spec pipeline)
 
 Explorer subagents are **read-only** and each gets a **distinct focus** (one
