@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review and Remediate Server Logs"
+  short_description: "Turn server log failures into verified fixes"
+  default_prompt: "Use $review-and-remediate-server-logs to inspect production server logs, prioritize actionable failures, implement evidence-backed fixes, and verify the result."
