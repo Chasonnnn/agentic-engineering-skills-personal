@@ -32,6 +32,11 @@ codex exec -m <model> \
   the final report from the last agent-message event (verify the exact event
   shape once per codex version) rather than expecting buffered markdown.
 - `- < prompt.txt` — read the prompt from stdin; keep the file, you will reuse it.
+- `--output-last-message <file>` — **always for review gates.** Writes the final
+  agent message (the findings + verdict) to a file so it survives intact.
+  Field incident 2026-08-02: a `--json | tail -c N` pipeline clipped findings
+  1–12 of a FIX-FIRST verdict; recovery meant parsing `~/.codex/sessions`
+  rollout files. Tail for liveness, read the verdict from the file.
 
 Save every prompt to a file. Re-gates, relaunches after a dead background process,
 and "run the same thing at higher effort" all depend on having the exact prompt.
@@ -66,10 +71,14 @@ Probe in two steps — never conclude from the error message alone:
    `tokens used` for a trivial prompt confirms a real heavier tier (a silent
    coercion to a lower tier would burn few tokens).
 
-Policy under this skill: default `xhigh`; use `ultra` at the orchestrator's
-discretion for **large batches or genuinely hard single tasks** (hardest
-concurrency implementations, make-or-break design second opinions, final
-adversarial verification). It consumes usage limits materially faster.
+Policy under this skill (user directive 2026-08-02):
+
+- **Adversarial review / gate / re-gate runs: `high` — never xhigh or ultra.**
+  Review quality saturates at high; the heavier tiers mainly burn usage limits
+  and wall-clock on a read-only task.
+- **Implementation: default `xhigh`**; `ultra` at the orchestrator's discretion
+  for large batches or genuinely hard single implementation tasks only. It
+  consumes usage limits materially faster.
 
 ---
 

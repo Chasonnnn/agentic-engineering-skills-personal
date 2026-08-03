@@ -160,6 +160,10 @@ DO BOTH:
    fix; legacy shapes after a re-key; lock-ordering after a new lock) — do not
    re-run round N-1's checklist and call it a re-gate.
 
+SCOPE: Do NOT re-litigate proportionality or scope decisions the orchestrator
+has already made (how much detail a doc carries, which fixes were adopted
+partially and why) — flag only genuine errors in what is present.
+
 [When routing this round's findings onward, the ORCHESTRATOR adds a DECISION
 line resolving every either/or the reviewer offered — never leave forks to the
 implementer's silent choice.]

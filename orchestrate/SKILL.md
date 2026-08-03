@@ -23,7 +23,7 @@ commits — and never burns its context writing code a delegate could write.
 | Role | Default | Does | Never does |
 |---|---|---|---|
 | **Orchestrator** | the main session (most capable/expensive model) | plans, decides *with the user*, delegates, reviews every delegate diff, assembles/integrates, runs suites, commits & pushes, keeps memory | writes substantive code (trivial one-liners exempt) |
-| **Codex CLI** | `codex exec`, gpt-5.6-sol @ xhigh (`ultra` at orchestrator discretion for large batches / hardest tasks) | token-heavy backend implementation; independent second opinion on large plans/specs | review its own implementation; edit tests it was told not to |
+| **Codex CLI** | `codex exec`, gpt-5.6-sol — implementation @ xhigh (`ultra` at orchestrator discretion for large batches / hardest tasks); adversarial review & re-gates @ **high** only, never xhigh/ultra (user directive 2026-08-02) | token-heavy backend implementation; independent second opinion on large plans/specs | review its own implementation; edit tests it was told not to |
 | **Subagent** | Claude Opus @ xhigh (judge stages @ max) | frontend, design taste, repo audits, research fan-outs, TDD test authoring, adversarial review | push; edit outside its track |
 
 Rationale: the orchestrator is expensive and smart; delegates are cheaper and
@@ -84,6 +84,13 @@ Numbered findings `[P1]` must-fix / `[P2]` should-fix / `[NIT]`, each with
 - [ ] Review **every** delegate diff before committing. For extractions/refactors:
       line-by-line against the pre-change original via `git show <base>:<file>` —
       moved code byte-similar, helper defaults match, error types preserved.
+- [ ] **Verify reviewer findings too, not just delegate diffs.** Before applying
+      a gate's [P1] fixes, re-check each factual claim against the repo yourself
+      (reviewers assert with confidence either way). This cuts both ways: a gate
+      may refute a claim the orchestrator itself "confirmed" — field hit
+      2026-08-02, a root-cause claim traced to a script that turned out to be
+      absent from the deployed data path (`supplement_row_count: 0`). Verify,
+      then fix; never forward or apply unverified verdicts.
 - [ ] **Scope-of-effect check** before declaring a behavior change complete:
       enumerate the production call sites that must exercise it and verify each
       passes input of the shape/scope the change needs; require one integration
