@@ -141,6 +141,14 @@ it to review.
   tool calls that would show as events. Kill and relaunch from the saved prompt
   file. (Field hit: a buffered run sat 69+ minutes with a live pid, zero stream
   growth, zero file writes — unobservable precisely because it lacked `--json`.)
+- **Session-start is part of liveness — a pid is not a session.** codex writes a
+  rollout file under `~/.codex/sessions/<Y/M/D>/` (containing the prompt) at
+  session start; no rollout with your prompt + no first event within ~2–3 min
+  means the exec is stuck in a pre-session retry loop (auth, rate limit,
+  contention from parallel codex sessions) and will not recover. Field hit
+  2026-08-03: a gate sat 3h on a live pid having never opened a session; a
+  "process alive" check wrongly reported it working. Arm a watchdog at launch
+  (no first event in N min → alert) instead of trusting pid checks.
 - **Background processes DIE on session restart.** On resume/compaction, **before**
   reporting a task as "still running", check the **event-file mtime and size**. If it
   stopped growing and the process is gone, the task is dead — **relaunch from the
