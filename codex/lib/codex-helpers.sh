@@ -57,3 +57,29 @@ _codex_timeout_wrapper() {
     "$@"
   fi
 }
+
+# --- Question tuning ---------------------------------------------------------
+#
+# Lightweight per-question preference store, independent of gstack's
+# gstack-question-preference binary. One flat file per question_id under
+# ~/.claude/codex-skill/prefs/ (override root with $CODEX_SKILL_STATE_DIR) —
+# no jq/sqlite dependency, no other skill's state. File content is the
+# option value to auto-pick; file absence means "ask normally".
+
+_CODEX_STATE_DIR="${CODEX_SKILL_STATE_DIR:-$HOME/.claude/codex-skill}"
+
+_codex_pref_get() {
+  # $1 = question_id. Prints the saved default option, or nothing if unset.
+  cat "$_CODEX_STATE_DIR/prefs/$1" 2>/dev/null || true
+}
+
+_codex_pref_set() {
+  # $1 = question_id, $2 = option value to auto-pick from now on.
+  mkdir -p "$_CODEX_STATE_DIR/prefs" 2>/dev/null || return 1
+  printf '%s' "$2" > "$_CODEX_STATE_DIR/prefs/$1"
+}
+
+_codex_pref_clear() {
+  # $1 = question_id. No-op (not an error) if nothing was saved.
+  rm -f "$_CODEX_STATE_DIR/prefs/$1" 2>/dev/null || true
+}
