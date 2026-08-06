@@ -1,0 +1,4 @@
+interface:
+  display_name: "Authmux"
+  short_description: "Route CLI work through verified auth contexts"
+  default_prompt: "Use $authmux to resolve the repository Authentication Context, verify the intended provider identity, and run supported commands through fail-closed process-scoped selection."

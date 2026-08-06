@@ -9,6 +9,7 @@ Clone once, then symlink each skill into the personal skills directory:
 ```sh
 git clone git@github.com:Chasonnnn/agentic-engineering-skills-personal.git ~/agentic-engineering-skills-personal
 ln -s ~/agentic-engineering-skills-personal/board-sync ~/.claude/skills/board-sync
+ln -s ~/agentic-engineering-skills-personal/authmux ~/.claude/skills/authmux
 ln -s ~/agentic-engineering-skills-personal/codex ~/.claude/skills/codex
 ln -s ~/agentic-engineering-skills-personal/github-pr-validation-loop ~/.claude/skills/github-pr-validation-loop
 ln -s ~/agentic-engineering-skills-personal/no-use-effect ~/.claude/skills/no-use-effect
@@ -23,6 +24,7 @@ New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-
 | Skill | What it does |
 | --- | --- |
 | [board-sync](board-sync/SKILL.md) | Sync planning state (specs/ADRs/roadmap) to a GitHub Project board as epic issues with nested sub-issues — epics on the board, slices hidden under them — plus an optional stale-issue refresh. |
+| [authmux](authmux/SKILL.md) | Resolve repository-bound authentication intent, verify provider identity evidence, route supported CLI commands through process-scoped contexts, and fail closed before wrong-account or wrong-project work. |
 | [codex](codex/SKILL.md) | Wraps the OpenAI Codex CLI for an independent second opinion: review (pass/fail gate on a diff), challenge (adversarial break-it), consult (ask anything, with session continuity). Ported from [gstack](https://github.com/garrytan/gstack)'s `/codex` skill — see credit note below. |
 | [github-pr-validation-loop](github-pr-validation-loop/SKILL.md) | Audit open PRs against the current base branch, reimplement valid findings cleanly, close invalid or superseded noise with evidence, and monitor CI through completion. |
 | [no-use-effect](no-use-effect/SKILL.md) | Prefer explicit React data flow, replace ad-hoc Effects with derived state, event handlers, query libraries, or keyed remounting, and contain legitimate external synchronization in named hooks. |
