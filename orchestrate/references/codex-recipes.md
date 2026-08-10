@@ -43,6 +43,33 @@ and "run the same thing at higher effort" all depend on having the exact prompt.
 
 ---
 
+## Resuming a session (`codex exec resume`)
+
+For the finder-fixes-verified pattern (pipelines §1): resume the reviewer's own
+session so it fixes its findings with full context intact.
+
+```bash
+codex exec resume <thread-id> \
+  -c 'sandbox_mode="workspace-write"' \
+  --json --output-last-message out.md \
+  - < fix-prompt.txt > stream.jsonl 2>&1   # run in background
+```
+
+- The thread id is in the original run's JSONL: first event,
+  `{"type":"thread.started","thread_id":"..."}`.
+- **`resume` rejects `-s` and `-C`** (field hit 2026-08-10, two failed launches).
+  Sandbox is widened via `-c 'sandbox_mode="workspace-write"'`; cwd, model, and
+  effort are inherited from the original session — which is what you want, and
+  also why you must NOT resume a read-only reviewer session expecting a
+  different working directory.
+- `--json`, `-o/--output-last-message`, and stdin prompts work as in `exec`.
+- The resumed turn keeps the session's full transcript: state your role change
+  explicitly in the prompt ("you now have write access and will fix your own
+  findings") plus any orchestrator adjudications, and nothing else — the
+  context is already there.
+
+---
+
 ## Reasoning-effort enum — CRITICAL GOTCHA (revised)
 
 The documented effort values (from the API's own rejection message) are:
@@ -73,9 +100,12 @@ Probe in two steps — never conclude from the error message alone:
 
 Policy under this skill (user directive 2026-08-02):
 
-- **Adversarial review / gate / re-gate runs: `high` — never xhigh or ultra.**
+- **Adversarial CODE-review gates / re-gates: `high` — never xhigh or ultra.**
   Review quality saturates at high; the heavier tiers mainly burn usage limits
-  and wall-clock on a read-only task.
+  and wall-clock on a read-only diff review.
+- **Architectural / major-decision second opinions (specs, plans, design
+  docs): `xhigh`** (user directive 2026-08-09). These are judgment tasks, not
+  checklist reviews — the heavier tier earns its cost here.
 - **Implementation: default `xhigh`**; `ultra` at the orchestrator's discretion
   for large batches or genuinely hard single implementation tasks only. It
   consumes usage limits materially faster.
@@ -92,12 +122,56 @@ use it.
 
 ## Sandbox modes
 
-- **`read-only`** — reviews, audits, investigations. The reviewer cannot mutate the
-  tree, so its verdict can't be contaminated by an accidental edit.
+- **`read-only`** — reviews, audits, investigations. The deliberate safety
+  property is **no writes**: the reviewer cannot mutate the tree, so its
+  verdict can't be contaminated by an accidental edit. Losing network is a
+  side effect of choosing the strict mode (codex's sandbox ties writes and
+  network to one permissiveness dial for `codex exec`, not two independent
+  switches) — it is not itself a goal, and most reviews don't need network
+  anyway. If a review genuinely needs a network call (e.g. "is this really the
+  latest version"), `read-only` is the wrong tool — it blocks the call the
+  same way `workspace-write` does (see next section) and hits the same
+  headless-hang failure mode. Handle that by doing the specific network step
+  myself and handing codex the answer, same as the `workspace-write` fix
+  below — not by escalating the review's sandbox.
 - **`workspace-write`** — implementation. **Convention: leave ALL changes
   uncommitted.** The orchestrator reviews the diff and commits with attribution in
   the message body. Codex never commits; that keeps the review gate in front of
   every commit.
+- **NEVER `danger-full-access` or `--dangerously-bypass-approvals-and-sandbox`**
+  without the user explicitly asking for it in those words. These remove ALL
+  sandboxing — full filesystem read/write anywhere on the machine, not just the
+  repo, plus unrestricted network. They are not "unblock network," they are
+  "no sandbox at all." User correction 2026-08-08: reached for
+  `danger-full-access` to fix a network hang (see next section); wrong tool —
+  the right fix needs no sandbox escalation at all.
+
+### CRITICAL: explicit `-s` bypasses guardian auto-review — omit it when network may be needed
+
+If the install's `~/.codex/config.toml` sets `approvals_reviewer =
+"guardian_subagent"` + `guardian_approval = true` under `[features]` (check
+before assuming — this is user-config-specific, not a codex-cli default), an
+**on-request** approval (the default `approval_policy`) that the sandbox blocks
+gets auto-reviewed by an AI guardian instead of blocking on a human — which
+works fine even in headless `codex exec`, since nothing needs a human at a
+keyboard.
+
+**But passing `-s <mode>` explicitly on the CLI appears to skip that wiring.**
+Field-verified 2026-08-08: two `codex exec -s workspace-write` tasks that each
+needed a network call (`uv sync` hitting PyPI; version-checking hitting npm)
+stalled indefinitely — alive pid, 0% CPU, zero event-stream growth for 15+
+minutes, repeated across 3 relaunches. A control call with **no `-s` flag at
+all** (relying purely on config defaults, which already resolve to
+`workspace-write`) ran an equivalent network command (`npm view <pkg> version`)
+to completion in ~20s, auto-approved by the guardian.
+
+**Rule:** if a codex task might touch the network (package installs, registry/
+version checks, external API calls, anything beyond local git/file/test
+commands), **omit `-s` entirely** and let config resolve it — don't pass
+`workspace-write` explicitly even though it's the "same" nominal mode. Reserve
+explicit `-s read-only` for tasks that are read-only AND need no network (pure
+code review against files already on disk). If a task stalls anyway with no
+`-s` flag, that's a genuine hang per the Liveness section below, not this gotcha.
 
 ### Known macOS sandbox wart: the uv cache
 

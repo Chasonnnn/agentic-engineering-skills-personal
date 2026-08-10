@@ -23,7 +23,7 @@ commits — and never burns its context writing code a delegate could write.
 | Role | Default | Does | Never does |
 |---|---|---|---|
 | **Orchestrator** | the main session (most capable/expensive model) | plans, decides *with the user*, delegates, reviews every delegate diff, assembles/integrates, runs suites, commits & pushes, keeps memory | writes substantive code (trivial one-liners exempt) |
-| **Codex CLI** | `codex exec`, gpt-5.6-sol — implementation @ xhigh (`ultra` at orchestrator discretion for large batches / hardest tasks); adversarial review & re-gates @ **high** only, never xhigh/ultra (user directive 2026-08-02) | token-heavy backend implementation; independent second opinion on large plans/specs | review its own implementation; edit tests it was told not to |
+| **Codex CLI** | `codex exec`, gpt-5.6-sol — implementation @ xhigh (`ultra` at orchestrator discretion for large batches / hardest tasks); adversarial CODE-review gates & re-gates @ **high** only, never xhigh/ultra (user directive 2026-08-02); architectural/major-decision second opinions @ **xhigh** (user directive 2026-08-09) | token-heavy backend implementation; independent second opinion on large plans/specs | review its own implementation; edit tests it was told not to |
 | **Subagent** | Claude Opus @ xhigh (judge stages @ max) | frontend, design taste, repo audits, research fan-outs, TDD test authoring, adversarial review | push; edit outside its track |
 
 Rationale: the orchestrator is expensive and smart; delegates are cheaper and
@@ -41,6 +41,15 @@ Each earns its place by the failure it prevents. Full detail in
    verifies each prior finding is truly resolved *and* attacks the new code —
    fixes introduce bugs too. *Prevents:* an implementer blessing its own blind
    spots; a fix round silently adding new P1s.
+   **Finder-fixes-verified variant** (owner-adopted 2026-08-10): reviewer finds →
+   the other model (or the orchestrator directly) verifies each finding against
+   the code → the finder's session resumes with write access to fix exactly the
+   verified set → the other family re-gates the fix delta. Implementer ≠ reviewer
+   holds **per round**, not per slice; roles may swap between rounds. Prefer this
+   when findings are precise (file:line + prescribed fix) — the finder carries
+   the deepest defect context and a handoff transfers nothing but the findings'
+   text. *Prevents:* context loss in the find→fix handoff; fixing hallucinated
+   findings.
 2. **TDD pipeline (backend)** — test-author subagent writes FAILING tests + an
    interface-contract doc against a frozen interface; orchestrator reviews the
    contract; codex implements to green and **may not edit tests**; adversarial
@@ -61,7 +70,12 @@ Each earns its place by the failure it prevents. Full detail in
 5. **Spec pipeline (big designs)** — research fan-out (read-only explorers) →
    synthesis draft → **adversarial verification** against the code (drafts
    contain confident falsehoods) → final spec with the user's decisions recorded.
-   Cap at 2 iterations. *Prevents:* shipping a spec built on plausible fiction.
+   Cap at 2 iterations. For major specs run TWO verification lenses **in
+   parallel**: a fact-verifier (every citation opened at the cited lines,
+   negative claims attacked) and a cross-model architectural second opinion
+   (codex @ xhigh). They catch disjoint failure modes — transcription errors
+   vs. wrong-shaped designs — and neither substitutes for the other.
+   *Prevents:* shipping a spec built on plausible fiction.
 6. **User decision protocol** — decisions shaping scope/architecture/timeline go
    to the user as structured questions with a **recommended** option; record them
    in the plan/memory. Everything else the orchestrator decides and reports.
@@ -126,6 +140,12 @@ Numbered findings `[P1]` must-fix / `[P2]` should-fix / `[NIT]`, each with
       have saved two cycles. Detail in pipelines §7.)
 - [ ] On resume/compaction: re-verify every "running" background task's liveness
       before reporting status (background procs die on session restart).
+- [ ] Product rules bind the orchestrator's OWN artifacts (mockups, docs,
+      decision batches) exactly as they bind delegate output — self-review
+      against the same checklist before delivering to the user. (Field hit
+      2026-08-09: owner had to catch a no-helper-text violation in
+      orchestrator-authored mockups while the orchestrator was enforcing that
+      very rule on delegates.)
 - [ ] Record durable decisions + gotchas to memory as they happen.
 
 ## References

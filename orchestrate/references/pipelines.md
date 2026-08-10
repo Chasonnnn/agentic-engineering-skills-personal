@@ -62,6 +62,33 @@ None existed before the fix. Skipping the re-gate would have shipped all three.
   rounds; a subagent found codex's legacy-data regression plus a test rigged to
   miss it. Same-family review would likely have caught neither.
 
+### Finder-fixes-verified variant (role swap per round)
+
+Owner-adopted 2026-08-10. The default loop routes findings back to the original
+implementer. This variant routes them to the **finder** instead:
+
+1. Reviewer/audit model produces findings (file:line + concrete fix each).
+2. A different party verifies each finding against the code before any fix is
+   authorized — the other model, or the orchestrator directly for a short list
+   (open the cited lines yourself; findings are asserted with confidence
+   whether right or wrong).
+3. The finder's session **resumes with write access** and fixes exactly the
+   verified set — nothing beyond it. For codex, `codex exec resume <thread-id>`
+   preserves the full review context (resume flag gotchas in codex-recipes.md).
+4. The other model family re-gates the fix delta as usual.
+
+Prefer it over implementer-fixes when findings are precise and prescriptive
+(security hardening, contract mismatches): the fix is essentially specified,
+and the finder holds the deepest context on each defect — handing back to the
+original implementer transfers nothing but the text of the findings. Do NOT use
+it for findings that require re-design or the original implementation intent;
+those go back to the implementer.
+
+The integrity rule, stated precisely: **implementer ≠ reviewer per round.** The
+model that authored a diff never verdicts that diff; who authored the previous
+round is irrelevant. First round: A builds, B reviews. Fix round: B fixes, A
+(or a fresh A-family session) re-gates.
+
 ---
 
 ## 2. TDD pipeline (backend features)
