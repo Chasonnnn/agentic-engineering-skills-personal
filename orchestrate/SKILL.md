@@ -92,7 +92,10 @@ Each earns its place by the failure it prevents. Full detail in
    computer-use — in an interactive codex session (e.g. a Herdr pane), not
    `codex exec`. This and computer-use QA testing are the only codex work
    exempt from exec mode; all implementation stays headless `codex exec`.
-   Applies only to browser live QAs.
+   Applies only to browser live QAs. The QA must drive a REAL, VISIBLE
+   browser window the owner can watch — a headless run does not satisfy a
+   live-QA gate (chrome-control may silently run headless; instruct the
+   agent explicitly and have it stop rather than fall back).
 
 ## Reviewer output contract (every gate)
 
