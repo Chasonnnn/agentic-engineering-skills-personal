@@ -41,7 +41,7 @@ CONSTRAINTS:
     pinned"), plus known instances, plus the invariants whose assertions may NOT
     weaken. Instance-by-instance grants make a literal delegate stop once per
     conflicting test — each stop is a full round-trip. (Field lesson: two
-    consecutive STOPs on adjacent pre-C2/pre-C3 pins, 2026-07-21.)
+    consecutive STOPs on adjacent pre-C2/pre-C3 pins.)
 - Follow the project's package manager and style (<uv/npm/...>).
 - Leave ALL changes UNCOMMITTED. Do not commit, do not push.
 - No fallback/default behavior that hides errors — fail explicitly.

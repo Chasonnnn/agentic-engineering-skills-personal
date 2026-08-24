@@ -34,7 +34,7 @@ codex exec -m <model> \
 - `- < prompt.txt` — read the prompt from stdin; keep the file, you will reuse it.
 - `--output-last-message <file>` — **always for review gates.** Writes the final
   agent message (the findings + verdict) to a file so it survives intact.
-  Field incident 2026-08-02: a `--json | tail -c N` pipeline clipped findings
+  Field incident: a `--json | tail -c N` pipeline clipped findings
   1–12 of a FIX-FIRST verdict; recovery meant parsing `~/.codex/sessions`
   rollout files. Tail for liveness, read the verdict from the file.
 
@@ -57,7 +57,7 @@ codex exec resume <thread-id> \
 
 - The thread id is in the original run's JSONL: first event,
   `{"type":"thread.started","thread_id":"..."}`.
-- **`resume` rejects `-s` and `-C`** (field hit 2026-08-10, two failed launches).
+- **`resume` rejects `-s` and `-C`** (field hit: two failed launches).
   Sandbox is widened via `-c 'sandbox_mode="workspace-write"'`; cwd, model, and
   effort are inherited from the original session — which is what you want, and
   also why you must NOT resume a read-only reviewer session expecting a
@@ -76,7 +76,7 @@ The documented effort values (from the API's own rejection message) are:
 `none` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`.
 
 **The rejection-message enum is a FLOOR, not the full truth.** Verified
-2026-07-21 on gpt-5.6-sol: `model_reasoning_effort="ultra"` is absent from the
+On gpt-5.6-sol, `model_reasoning_effort="ultra"` is absent from the
 400-error enum yet is ACCEPTED and HONORED — the request completes and burns an
 anomalously large reasoning-token count on a trivial prompt (~15k tokens for a
 one-word reply), and the Codex GUI exposes Ultra ("consumes usage limits
@@ -98,17 +98,18 @@ Probe in two steps — never conclude from the error message alone:
    `tokens used` for a trivial prompt confirms a real heavier tier (a silent
    coercion to a lower tier would burn few tokens).
 
-Policy under this skill (user directive 2026-08-02):
+Policy under this skill:
 
 - **Adversarial CODE-review gates / re-gates: `high` — never xhigh or ultra.**
   Review quality saturates at high; the heavier tiers mainly burn usage limits
   and wall-clock on a read-only diff review.
 - **Architectural / major-decision second opinions (specs, plans, design
-  docs): `xhigh`** (user directive 2026-08-09). These are judgment tasks, not
+  docs): `xhigh`.** These are judgment tasks, not
   checklist reviews — the heavier tier earns its cost here.
-- **Implementation: default `xhigh`**; `ultra` at the orchestrator's discretion
-  for large batches or genuinely hard single implementation tasks only. It
-  consumes usage limits materially faster.
+- **Implementation: default `high`; `xhigh` for genuinely complicated slices.**
+  `ultra` is **retired** for all roles — it burned
+  usage limits without measurable quality gain; the probe recipe above remains
+  only as the method for verifying any future tier's enum support.
 
 ---
 
@@ -142,7 +143,7 @@ use it.
   without the user explicitly asking for it in those words. These remove ALL
   sandboxing — full filesystem read/write anywhere on the machine, not just the
   repo, plus unrestricted network. They are not "unblock network," they are
-  "no sandbox at all." User correction 2026-08-08: reached for
+  "no sandbox at all." User correction: reached for
   `danger-full-access` to fix a network hang (see next section); wrong tool —
   the right fix needs no sandbox escalation at all.
 
@@ -157,7 +158,7 @@ works fine even in headless `codex exec`, since nothing needs a human at a
 keyboard.
 
 **But passing `-s <mode>` explicitly on the CLI appears to skip that wiring.**
-Field-verified 2026-08-08: two `codex exec -s workspace-write` tasks that each
+Field-verified: two `codex exec -s workspace-write` tasks that each
 needed a network call (`uv sync` hitting PyPI; version-checking hitting npm)
 stalled indefinitely — alive pid, 0% CPU, zero event-stream growth for 15+
 minutes, repeated across 3 relaunches. A control call with **no `-s` flag at
@@ -181,7 +182,7 @@ launcher or make-target that shells out to `uv` fails on its first sandboxed
 attempt. This is expected, not a task failure — pre-authorize the retry in the
 prompt: *"if the sandboxed launcher hits the uv-cache permission error, rerun it
 outside the sandbox and note it."* Field record: hit on 5 consecutive
-operational runs (2026-07-26/27); each agent burned a retry rediscovering it
+operational runs; each agent burned a retry rediscovering it
 until the prompt named it.
 
 ---
@@ -219,8 +220,7 @@ it to review.
   rollout file under `~/.codex/sessions/<Y/M/D>/` (containing the prompt) at
   session start; no rollout with your prompt + no first event within ~2–3 min
   means the exec is stuck in a pre-session retry loop (auth, rate limit,
-  contention from parallel codex sessions) and will not recover. Field hit
-  2026-08-03: a gate sat 3h on a live pid having never opened a session; a
+  contention from parallel codex sessions) and will not recover. Field hit: a gate sat 3h on a live pid having never opened a session; a
   "process alive" check wrongly reported it working. Arm a watchdog at launch
   (no first event in N min → alert) instead of trusting pid checks.
 - **Background processes DIE on session restart.** On resume/compaction, **before**

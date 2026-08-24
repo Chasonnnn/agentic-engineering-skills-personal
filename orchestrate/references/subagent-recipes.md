@@ -114,7 +114,7 @@ cd <worktree> && claude -p --model opus \
 - Reviewer output contract unchanged (`[P1]/[P2]/[NIT]` + VERDICT line).
 - Run it **from the worktree under review** so relative paths in findings
   resolve.
-- Field record (2026-07-26/27): 6/6 gate rounds in one session ran this way,
+- Field record: 6/6 gate rounds in one session ran this way,
   every round producing verdict-grade findings — including a P1 proven by
   constructing a working exploit from live manifest data.
 
@@ -126,3 +126,16 @@ Explorer subagents are **read-only** and each gets a **distinct focus** (one
 subsystem or concern per agent). They investigate and report; they never edit. The
 orchestrator (or a synthesis agent) merges their findings — see the spec pipeline
 in `pipelines.md`.
+
+## CI watchers: use one long-lived wait, not a background poll loop
+
+Field hit: a CI-watcher subagent polled with a backgrounded bash
+loop; the sandbox's per-call session reset killed the loop silently after its
+first iteration and the watcher went idle having reported nothing. Rules:
+
+- The watcher waits with a single long-lived process (`gh run watch`, the
+  Monitor tool, or one foreground loop inside one Bash call) — never a
+  detached background poll it assumes will keep running.
+- Orchestrator side: a watcher going idle well before the runs could have
+  concluded is SUSPECT, not done — query it for current state and re-instruct
+  rather than assuming CI is green.

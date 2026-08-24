@@ -23,7 +23,7 @@ commits — and never burns its context writing code a delegate could write.
 | Role | Default | Does | Never does |
 |---|---|---|---|
 | **Orchestrator** | the main session (most capable/expensive model) | plans, decides *with the user*, delegates, reviews every delegate diff, assembles/integrates, runs suites, commits & pushes, keeps memory | writes substantive code (trivial one-liners exempt) |
-| **Codex CLI** | `codex exec`, gpt-5.6-sol — implementation @ xhigh (`ultra` at orchestrator discretion for large batches / hardest tasks); adversarial CODE-review gates & re-gates @ **high** only, never xhigh/ultra (user directive 2026-08-02); architectural/major-decision second opinions @ **xhigh** (user directive 2026-08-09) | token-heavy backend implementation; independent second opinion on large plans/specs | review its own implementation; edit tests it was told not to |
+| **Codex CLI** | `codex exec`, gpt-5.6-sol — implementation @ **high**, `xhigh` for genuinely complicated slices (ultra retired); adversarial CODE-review gates & re-gates @ **high** only, never xhigh; architectural/major-decision second opinions @ **xhigh** | token-heavy backend implementation; independent second opinion on large plans/specs | review its own implementation; edit tests it was told not to |
 | **Subagent** | Claude Opus @ xhigh (judge stages @ max) | frontend, design taste, repo audits, research fan-outs, TDD test authoring, adversarial review | push; edit outside its track |
 
 Rationale: the orchestrator is expensive and smart; delegates are cheaper and
@@ -41,7 +41,7 @@ Each earns its place by the failure it prevents. Full detail in
    verifies each prior finding is truly resolved *and* attacks the new code —
    fixes introduce bugs too. *Prevents:* an implementer blessing its own blind
    spots; a fix round silently adding new P1s.
-   **Finder-fixes-verified variant** (owner-adopted 2026-08-10): reviewer finds →
+   **Finder-fixes-verified variant:** reviewer finds →
    the other model (or the orchestrator directly) verifies each finding against
    the code → the finder's session resumes with write access to fix exactly the
    verified set → the other family re-gates the fix delta. Implementer ≠ reviewer
@@ -60,9 +60,12 @@ Each earns its place by the failure it prevents. Full detail in
 3. **Parallel tracks + assembly** — independent tracks run at once (subagents in
    isolated worktrees committing locally; codex in the main checkout leaving work
    **uncommitted**). Freeze names/ids before dispatch; agents "flag loudly rather
-   than invent". Orchestrator assembles, reconciles deviations, runs full suites,
-   then **one** adversarial review over the whole diff before push. *Prevents:*
-   merge chaos and invented interfaces.
+   than invent". Canon-doc/status headers (e.g. a "Last verified" line) are
+   assembly-owned: delegates report the bump, the orchestrator writes it once —
+   two tracks bumping the same header is a guaranteed conflict. Orchestrator
+   assembles, reconciles deviations, runs full suites, then **one** adversarial
+   review over the whole diff before push. *Prevents:* merge chaos and invented
+   interfaces.
 4. **Frozen-file protocol (production-critical)** — before refactoring a frozen
    file, land a GOLDEN INVARIANCE TEST pinning its observable contract with
    **inline** expected values; convert one seam at a time, behavior-preserving.
@@ -86,7 +89,7 @@ Each earns its place by the failure it prevents. Full detail in
    recovery is an orchestrator decision — the delegate stops and reports, never
    improvises a resubmit or state edit. *Prevents:* improvised recovery on live
    state; partial success reported as success; orphaned services.
-   **Browser live QA (owner directive 2026-08-12):** live QA that drives a
+   **Browser live QA:** live QA that drives a
    browser, when delegated to codex, runs through codex's **chrome-control**
    (the bundled Chrome plugin driving the user's real Chrome) — not
    computer-use — in an interactive codex session (e.g. a Herdr pane), not
@@ -105,14 +108,24 @@ Numbered findings `[P1]` must-fix / `[P2]` should-fix / `[NIT]`, each with
 
 ## Orchestrator duties (checklist)
 
+- [ ] **Maximize wall-clock concurrency.** Serialize only on true data
+      dependencies. When a gate blocks one track, advance the others; run
+      independent gates/audits in parallel; a delta re-gate that costs no
+      wall-clock (another track is the long pole anyway) is nearly free.
+      Never idle waiting on a single delegate while dispatchable work exists.
+- [ ] **Automated stall watchdog on background CLI delegates.** Manual tail
+      checks don't scale past one delegate: run a watchdog process (log-growth
+      based, ~10 min no-growth threshold while the pid lives) over every
+      background CLI log; harness-tracked subagents are exempt (they notify).
+      Write watchdogs in python — macOS ships bash 3.2 (no associative
+      arrays), a field hit.
 - [ ] Review **every** delegate diff before committing. For extractions/refactors:
       line-by-line against the pre-change original via `git show <base>:<file>` —
       moved code byte-similar, helper defaults match, error types preserved.
 - [ ] **Verify reviewer findings too, not just delegate diffs.** Before applying
       a gate's [P1] fixes, re-check each factual claim against the repo yourself
       (reviewers assert with confidence either way). This cuts both ways: a gate
-      may refute a claim the orchestrator itself "confirmed" — field hit
-      2026-08-02, a root-cause claim traced to a script that turned out to be
+      may refute a claim the orchestrator itself "confirmed" — field hit: a root-cause claim traced to a script that turned out to be
       absent from the deployed data path (`supplement_row_count: 0`). Verify,
       then fix; never forward or apply unverified verdicts.
 - [ ] **Scope-of-effect check** before declaring a behavior change complete:
@@ -152,8 +165,7 @@ Numbered findings `[P1]` must-fix / `[P2]` should-fix / `[NIT]`, each with
       before reporting status (background procs die on session restart).
 - [ ] Product rules bind the orchestrator's OWN artifacts (mockups, docs,
       decision batches) exactly as they bind delegate output — self-review
-      against the same checklist before delivering to the user. (Field hit
-      2026-08-09: owner had to catch a no-helper-text violation in
+      against the same checklist before delivering to the user. (Field hit: owner had to catch a no-helper-text violation in
       orchestrator-authored mockups while the orchestrator was enforcing that
       very rule on delegates.)
 - [ ] Record durable decisions + gotchas to memory as they happen.

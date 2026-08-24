@@ -64,7 +64,7 @@ None existed before the fix. Skipping the re-gate would have shipped all three.
 
 ### Finder-fixes-verified variant (role swap per round)
 
-Owner-adopted 2026-08-10. The default loop routes findings back to the original
+The default loop routes findings back to the original
 implementer. This variant routes them to the **finder** instead:
 
 1. Reviewer/audit model produces findings (file:line + concrete fix each).
@@ -132,7 +132,7 @@ The separation of powers moves from author-vs-implementer to
 implementer-vs-gate. Use the **full** pipeline when the slice is large, the
 interface is contested, or the implementer defining its own tests is the fox
 guarding the henhouse (scoring logic, security boundaries, anything it has an
-incentive to under-test). Field evidence (2026-07-26/27): five consecutive fix
+incentive to under-test). Field evidence: five consecutive fix
 branches ran the variant — failing-first tails in every report, gates checking
 test integrity every round — ~20 commits, zero weakened-assertion findings.
 
@@ -239,8 +239,7 @@ Every operational prompt carries, without exception (template (f) in
 
 1. **Hard stop conditions, enumerated per anticipated failure shape.** "A
    single item's failure stops the sweep at that item; capture X verbatim and
-   report." The delegate's best moments come from these clauses — field run
-   2026-07-26: the agent stopped at a `failed_permanent` job and reported
+   report." The delegate's best moments come from these clauses — field run: the agent stopped at a `failed_permanent` job and reported
    instead of improvising a workaround, *because* the prompt said "a fresh
    submit needs an override — an orchestrator decision, do not improvise one."
 2. **Verbatim-evidence capture.** Exact error text, full status rows, validator
@@ -274,7 +273,7 @@ When two live failures share a defect **class** (not just a symptom — e.g. "a
 validator enforces a contract the generation prompt never states"), stop
 iterating incident-by-incident: dispatch a **class-wide audit** — one read-only
 pass enumerating every instance of the class — and fix them in one gated round.
-Field evidence (2026-07-26/27): the instruction/validator-gap class surfaced
+Field evidence: the instruction/validator-gap class surfaced
 **five times** across a live mint pipeline (grounding vocabulary, scaffolding
 blocklist, reviewer-overlap rule, rubric echo, one missing preposition), each
 discovered one ~50-minute live cycle at a time; a sweep after occurrence two
