@@ -135,9 +135,17 @@ Numbered findings `[P1]` must-fix / `[P2]` should-fix / `[NIT]`, each with
       FIX-FIRST cycles converging on a fragile approximation of the missing
       field (field hit: three gate rounds patching a client timer freeze; one
       server-exposed anchor field ended it and deleted the machinery).
-- [ ] Review **every** delegate diff before committing. For extractions/refactors:
-      line-by-line against the pre-change original via `git show <base>:<file>` —
-      moved code byte-similar, helper defaults match, error types preserved.
+- [ ] **Every delegate diff is reviewed before committing — but the orchestrator
+      reads full diffs only in the micro-review lane.** Reading whole diffs
+      line-by-line burns exactly the orchestrator context delegation exists to
+      save (user directive 2026-09-01). Lanes: gated slices/batches → the
+      adversarial gate is the diff reader; the orchestrator reads the verdict +
+      P1s and spot-checks only high-risk seams. Micro-review lane (<50 lines,
+      no gate) → the orchestrator reads the diff directly (trivially cheap).
+      Extractions/refactors → the GATE PROMPT must require line-by-line
+      comparison against the pre-change original via `git show <base>:<file>`
+      (moved code byte-similar, helper defaults match, error types preserved);
+      the orchestrator assigns that check, never performs it.
 - [ ] **Verify reviewer findings too, not just delegate diffs.** Before applying
       a gate's [P1] fixes, re-check each factual claim against the repo yourself
       (reviewers assert with confidence either way). This cuts both ways: a gate
