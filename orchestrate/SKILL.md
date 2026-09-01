@@ -50,6 +50,12 @@ Each earns its place by the failure it prevents. Full detail in
    the deepest defect context and a handoff transfers nothing but the findings'
    text. *Prevents:* context loss in the find→fix handoff; fixing hallucinated
    findings.
+   **Micro-review lane (small diffs):** diffs under ~50 lines may take a direct
+   orchestrator line-by-line review instead of a delegate gate round — the
+   dispatch→report→verdict cycle costs more than the diff warrants. Hard
+   exclusions: logic-groups, and any diff touching the project's
+   production-critical surfaces (e.g. scoring/tenancy/auth) gets the full gate
+   regardless of size. *Prevents:* 30-minute gate cycles on 20-line fixes.
 2. **TDD pipeline (backend)** — test-author subagent writes FAILING tests + an
    interface-contract doc against a frozen interface; orchestrator reviews the
    contract; codex implements to green and **may not edit tests**; adversarial
@@ -118,7 +124,17 @@ Numbered findings `[P1]` must-fix / `[P2]` should-fix / `[NIT]`, each with
       based, ~10 min no-growth threshold while the pid lives) over every
       background CLI log; harness-tracked subagents are exempt (they notify).
       Write watchdogs in python — macOS ships bash 3.2 (no associative
-      arrays), a field hit.
+      arrays), a field hit. On macOS, wrap every long background run in
+      `caffeinate -s` (or arm `caffeinate -s -w <pid>` on one already running) —
+      machine sleep wedges sockets into permanent hangs and corrupts in-flight
+      test runs, a field hit that cost 6 hours.
+- [ ] **Architecture-first on race/state bugs.** Before dispatching a fix for a
+      race, stale-state, or synchronization bug, decide where the owned truth
+      should live (usually server-side) and change that seam — never dispatch
+      rounds that patch client-observable symptoms. *Prevents:* serial
+      FIX-FIRST cycles converging on a fragile approximation of the missing
+      field (field hit: three gate rounds patching a client timer freeze; one
+      server-exposed anchor field ended it and deleted the machinery).
 - [ ] Review **every** delegate diff before committing. For extractions/refactors:
       line-by-line against the pre-change original via `git show <base>:<file>` —
       moved code byte-similar, helper defaults match, error types preserved.
