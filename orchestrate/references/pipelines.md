@@ -57,10 +57,6 @@ None existed before the fix. Skipping the re-gate would have shipped all three.
 - **Track convergence.** Findings-per-round should fall (a real sequence: 8 → 5 →
   4 → …). Flat or rising counts after round 3 mean the approach is wrong, not the
   execution — stop the loop, reassess the design, or escalate to the user.
-- **Evidence for the cross-model rule:** in one working day the gate caught bugs
-  in *both directions* — codex found a subagent's concurrency holes across four
-  rounds; a subagent found codex's legacy-data regression plus a test rigged to
-  miss it. Same-family review would likely have caught neither.
 
 ### Finder-fixes-verified variant (role swap per round)
 
@@ -132,9 +128,7 @@ The separation of powers moves from author-vs-implementer to
 implementer-vs-gate. Use the **full** pipeline when the slice is large, the
 interface is contested, or the implementer defining its own tests is the fox
 guarding the henhouse (scoring logic, security boundaries, anything it has an
-incentive to under-test). Field evidence: five consecutive fix
-branches ran the variant — failing-first tails in every report, gates checking
-test integrity every round — ~20 commits, zero weakened-assertion findings.
+incentive to under-test).
 
 ---
 
@@ -204,7 +198,7 @@ The pipeline exists to catch them before they become a spec.
    and an **unusable replay key**.
 4. **Final spec** with the **user's decisions recorded** inline (see §6).
 
-Run **codex as an independent second opinion** at ~max effort against the draft.
+Run **codex as an independent second opinion** at `xhigh` against the draft.
 **Cap at 2 iterations** — past that, the spec is either good enough or the design
 question needs the user.
 

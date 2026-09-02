@@ -8,9 +8,8 @@ Every codex prompt is prepended with the **filesystem-boundary preamble** from
 `codex-recipes.md`. Subagent prompts carry the **six mandatory contents** from
 `subagent-recipes.md`.
 
-**Every SUBAGENT prompt ends with the delivery footer** (observed failure rate
-without it: 3 of 3 first-run agents went idle with the report stranded in their
-own transcript):
+**Every SUBAGENT prompt ends with the delivery footer** (without it, agents go
+idle with the report stranded in their own transcript):
 
 ```
 DELIVERY: your plain-text output is INVISIBLE to the orchestrator. Before you
@@ -22,6 +21,12 @@ delivered nothing.
 ---
 
 ## (a) Codex implementer
+
+When the slice deliberately replaces pinned behavior, grant test edits by
+**category** (fill the bracketed constraint below): the pinned behavior, any
+known instances, and the invariants whose assertions may not weaken.
+Instance-by-instance grants make a literal delegate stop once per conflicting
+test — each stop is a full round-trip.
 
 ```
 [filesystem-boundary preamble]
@@ -35,13 +40,9 @@ ambiguous or wrong; do not silently deviate):
 CONSTRAINTS:
 - Do NOT edit tests. If a test looks wrong, STOP and report it as a test-change
   request — do not change it.
-  - Exception you must pre-authorize when the slice DELIBERATELY replaces pinned
-    behavior: grant the edit by CATEGORY ("you may edit any pre-existing test
-    whose assertions pin <the replaced behavior>; name each edited test + what it
-    pinned"), plus known instances, plus the invariants whose assertions may NOT
-    weaken. Instance-by-instance grants make a literal delegate stop once per
-    conflicting test — each stop is a full round-trip. (Field lesson: two
-    consecutive STOPs on adjacent pre-C2/pre-C3 pins.)
+  [- Exception: you may edit any pre-existing test whose assertions pin <the
+    replaced behavior> (known instances: <tests>); name each edited test and
+    what it pinned. Assertions on <invariants> may NOT weaken.]
 - Follow the project's package manager and style (<uv/npm/...>).
 - Leave ALL changes UNCOMMITTED. Do not commit, do not push.
 - No fallback/default behavior that hides errors — fail explicitly.

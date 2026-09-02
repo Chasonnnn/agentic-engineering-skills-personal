@@ -24,7 +24,7 @@ commits — and never burns its context writing code a delegate could write.
 |---|---|---|---|
 | **Orchestrator** | the main session (most capable/expensive model) | plans, decides *with the user*, delegates, reviews every delegate diff, assembles/integrates, runs suites, commits & pushes, keeps memory | writes substantive code (trivial one-liners exempt) |
 | **Codex CLI** | `codex exec`, gpt-5.6-sol — implementation @ **high**, `xhigh` for genuinely complicated slices (ultra retired); adversarial CODE-review gates & re-gates @ **high** only, never xhigh; architectural/major-decision second opinions @ **xhigh** | token-heavy backend implementation; independent second opinion on large plans/specs | review its own implementation; edit tests it was told not to |
-| **Subagent** | Claude Opus @ xhigh (judge stages @ max) | frontend, design taste, repo audits, research fan-outs, TDD test authoring, adversarial review | push; edit outside its track |
+| **Subagent** | Claude Opus @ **high** (all stages, judge stages included) | frontend, design taste, repo audits, research fan-outs, TDD test authoring, adversarial review | push; edit outside its track |
 
 Rationale: the orchestrator is expensive and smart; delegates are cheaper and
 reliable. Spend the orchestrator's context on **judgment**, not mechanical
@@ -95,16 +95,15 @@ Each earns its place by the failure it prevents. Full detail in
    recovery is an orchestrator decision — the delegate stops and reports, never
    improvises a resubmit or state edit. *Prevents:* improvised recovery on live
    state; partial success reported as success; orphaned services.
-   **Browser live QA:** live QA that drives a
-   browser, when delegated to codex, runs through codex's **chrome-control**
-   (the bundled Chrome plugin driving the user's real Chrome) — not
-   computer-use — in an interactive codex session (e.g. a Herdr pane), not
-   `codex exec`. This and computer-use QA testing are the only codex work
-   exempt from exec mode; all implementation stays headless `codex exec`.
-   Applies only to browser live QAs. The QA must drive a REAL, VISIBLE
-   browser window the owner can watch — a headless run does not satisfy a
-   live-QA gate (chrome-control may silently run headless; instruct the
-   agent explicitly and have it stop rather than fall back).
+   **Browser live QA:** when delegated to codex, browser-driving live QA runs
+   through codex's **chrome-control** (the bundled Chrome plugin driving the
+   user's real Chrome), not computer-use, in an interactive codex session
+   (e.g. a Herdr pane). Interactive QA — this and computer-use QA — is the
+   only codex work exempt from headless `codex exec`; all implementation
+   stays headless. The QA must drive a visible browser window the owner can
+   watch: chrome-control may silently run headless, and a headless run does
+   not satisfy a live-QA gate — instruct the agent explicitly and have it
+   stop rather than fall back.
 
 ## Reviewer output contract (every gate)
 
@@ -127,7 +126,7 @@ Numbered findings `[P1]` must-fix / `[P2]` should-fix / `[NIT]`, each with
       arrays), a field hit. On macOS, wrap every long background run in
       `caffeinate -s` (or arm `caffeinate -s -w <pid>` on one already running) —
       machine sleep wedges sockets into permanent hangs and corrupts in-flight
-      test runs, a field hit that cost 6 hours.
+      test runs, a field hit.
 - [ ] **Architecture-first on race/state bugs.** Before dispatching a fix for a
       race, stale-state, or synchronization bug, decide where the owned truth
       should live (usually server-side) and change that seam — never dispatch
@@ -138,7 +137,7 @@ Numbered findings `[P1]` must-fix / `[P2]` should-fix / `[NIT]`, each with
 - [ ] **Every delegate diff is reviewed before committing — but the orchestrator
       reads full diffs only in the micro-review lane.** Reading whole diffs
       line-by-line burns exactly the orchestrator context delegation exists to
-      save (user directive 2026-09-01). Lanes: gated slices/batches → the
+      save. Lanes: gated slices/batches → the
       adversarial gate is the diff reader; the orchestrator reads the verdict +
       P1s and spot-checks only high-risk seams. Micro-review lane (<50 lines,
       no gate) → the orchestrator reads the diff directly (trivially cheap).
@@ -149,9 +148,10 @@ Numbered findings `[P1]` must-fix / `[P2]` should-fix / `[NIT]`, each with
 - [ ] **Verify reviewer findings too, not just delegate diffs.** Before applying
       a gate's [P1] fixes, re-check each factual claim against the repo yourself
       (reviewers assert with confidence either way). This cuts both ways: a gate
-      may refute a claim the orchestrator itself "confirmed" — field hit: a root-cause claim traced to a script that turned out to be
-      absent from the deployed data path (`supplement_row_count: 0`). Verify,
-      then fix; never forward or apply unverified verdicts.
+      may refute a claim the orchestrator itself "confirmed" — field hit: a
+      root-cause claim traced to a script that turned out to be absent from
+      the deployed data path. Verify, then fix; never forward or apply
+      unverified verdicts.
 - [ ] **Scope-of-effect check** before declaring a behavior change complete:
       enumerate the production call sites that must exercise it and verify each
       passes input of the shape/scope the change needs; require one integration
@@ -182,9 +182,7 @@ Numbered findings `[P1]` must-fix / `[P2]` should-fix / `[NIT]`, each with
       directly, don't round-trip.
 - [ ] **Second-occurrence sweep:** when two failures share a defect class, stop
       fixing incidents one at a time — dispatch a class-wide audit and fix every
-      instance in one gated round. (Field hit: five instruction/validator-gap
-      incidents fixed serially at ~50 min per live cycle; a sweep after #2 would
-      have saved two cycles. Detail in pipelines §7.)
+      instance in one gated round. (Field case and detail in pipelines §7.)
 - [ ] On resume/compaction: re-verify every "running" background task's liveness
       before reporting status (background procs die on session restart).
 - [ ] Product rules bind the orchestrator's OWN artifacts (mockups, docs,

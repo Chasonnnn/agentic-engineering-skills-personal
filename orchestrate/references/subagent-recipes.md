@@ -87,9 +87,9 @@ Two more delivery realities:
 
 ## Effort tiers
 
-- Implementation / test authoring / research: `xhigh`.
-- The **hardest judge/review stages**: reserve the **`max`** tier — the adversarial
-  gate on a large or production-critical diff is where the extra effort pays.
+- Every Opus subagent stage — implementation, test authoring, research, and the
+  hardest judge/review gates alike: **`high`**. Do not spend `xhigh` or `max` on
+  an Opus subagent; the extra effort has not paid for itself here.
 
 ---
 
@@ -114,9 +114,6 @@ cd <worktree> && claude -p --model opus \
 - Reviewer output contract unchanged (`[P1]/[P2]/[NIT]` + VERDICT line).
 - Run it **from the worktree under review** so relative paths in findings
   resolve.
-- Field record: 6/6 gate rounds in one session ran this way,
-  every round producing verdict-grade findings — including a P1 proven by
-  constructing a working exploit from live manifest data.
 
 ---
 

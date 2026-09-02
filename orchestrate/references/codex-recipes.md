@@ -57,7 +57,7 @@ codex exec resume <thread-id> \
 
 - The thread id is in the original run's JSONL: first event,
   `{"type":"thread.started","thread_id":"..."}`.
-- **`resume` rejects `-s` and `-C`** (field hit: two failed launches).
+- **`resume` rejects `-s` and `-C`.**
   Sandbox is widened via `-c 'sandbox_mode="workspace-write"'`; cwd, model, and
   effort are inherited from the original session — which is what you want, and
   also why you must NOT resume a read-only reviewer session expecting a
@@ -70,18 +70,15 @@ codex exec resume <thread-id> \
 
 ---
 
-## Reasoning-effort enum — CRITICAL GOTCHA (revised)
+## Reasoning-effort enum
 
 The documented effort values (from the API's own rejection message) are:
 `none` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`.
 
-**The rejection-message enum is a FLOOR, not the full truth.** Verified
-On gpt-5.6-sol, `model_reasoning_effort="ultra"` is absent from the
-400-error enum yet is ACCEPTED and HONORED — the request completes and burns an
-anomalously large reasoning-token count on a trivial prompt (~15k tokens for a
-one-word reply), and the Codex GUI exposes Ultra ("consumes usage limits
-faster"). An earlier version of this file claimed ultra was silently coerced;
-that was an inference from the enum listing, never round-tripped. Wrong.
+**The rejection-message enum is a floor, not the full truth.** A value absent
+from the 400-error enum can still be accepted and honored: on gpt-5.6-sol,
+`ultra` completes and burns an anomalously large reasoning-token count on a
+trivial prompt (~15k tokens for a one-word reply).
 
 Probe in two steps — never conclude from the error message alone:
 
@@ -143,11 +140,11 @@ use it.
   without the user explicitly asking for it in those words. These remove ALL
   sandboxing — full filesystem read/write anywhere on the machine, not just the
   repo, plus unrestricted network. They are not "unblock network," they are
-  "no sandbox at all." User correction: reached for
-  `danger-full-access` to fix a network hang (see next section); wrong tool —
-  the right fix needs no sandbox escalation at all.
+  "no sandbox at all." Reaching for `danger-full-access` to fix a network
+  hang is the wrong tool — the right fix needs no sandbox escalation at all
+  (see next section).
 
-### CRITICAL: explicit `-s` bypasses guardian auto-review — omit it when network may be needed
+### Explicit `-s` bypasses guardian auto-review — omit it when network may be needed
 
 If the install's `~/.codex/config.toml` sets `approvals_reviewer =
 "guardian_subagent"` + `guardian_approval = true` under `[features]` (check
@@ -181,9 +178,8 @@ code review against files already on disk). If a task stalls anyway with no
 launcher or make-target that shells out to `uv` fails on its first sandboxed
 attempt. This is expected, not a task failure — pre-authorize the retry in the
 prompt: *"if the sandboxed launcher hits the uv-cache permission error, rerun it
-outside the sandbox and note it."* Field record: hit on 5 consecutive
-operational runs; each agent burned a retry rediscovering it
-until the prompt named it.
+outside the sandbox and note it."* Until the prompt named it, every agent
+burned a retry rediscovering it.
 
 ---
 

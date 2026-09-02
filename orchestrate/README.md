@@ -12,18 +12,17 @@ failure it prevents. Written for an experienced engineer-operator.
 
 | File | Purpose |
 |---|---|
-| `SKILL.md` | Entry point. Cast, the six non-negotiable protocols, orchestrator duties. Read first. |
-| `references/pipelines.md` | The six pipelines (review gate, TDD, parallel tracks, frozen-file, spec, user-decision) in operational detail. |
+| `SKILL.md` | Entry point. Cast, the seven non-negotiable protocols, orchestrator duties. Read first. |
+| `references/pipelines.md` | The seven pipelines (review gate, TDD, parallel tracks, frozen-file, spec, user-decision, operational-run) in operational detail. |
 | `references/codex-recipes.md` | `codex exec` invocation, the reasoning-effort enum gotcha, sandbox modes, liveness, the filesystem-boundary preamble. |
 | `references/subagent-recipes.md` | Worktree isolation, teammate messaging when an agent goes idle, the mandatory contents of an implementation prompt. |
-| `references/prompt-templates.md` | Copy-paste skeletons: codex implementer, adversarial reviewer, TDD test author, content/pack author, re-gate. |
+| `references/prompt-templates.md` | Copy-paste skeletons: codex implementer, adversarial reviewer, TDD test author, content/pack author, re-gate, operational run. |
 
 ## Install
 
 ```bash
-git clone git@github.com:Chasonnnn/orchestrate-skill.git ~/.claude/skills/orchestrate
-# or over https:
-git clone https://github.com/Chasonnnn/orchestrate-skill.git ~/.claude/skills/orchestrate
+git clone git@github.com:Chasonnnn/agentic-engineering-skills-personal.git ~/agentic-engineering-skills-personal
+ln -s ~/agentic-engineering-skills-personal/orchestrate ~/.claude/skills/orchestrate
 ```
 
 Claude Code discovers skills under `~/.claude/skills/`. The skill activates on
@@ -34,7 +33,7 @@ agents/subagents.
 ## Update
 
 ```bash
-git -C ~/.claude/skills/orchestrate pull
+git -C ~/agentic-engineering-skills-personal pull
 ```
 
 ## Per-project adaptation
@@ -43,18 +42,17 @@ This skill ships **defaults**, not laws. Adapt on two axes:
 
 ### 1. The Cast — which models play which role
 
-The defaults assume Claude Opus orchestrates, `codex exec` (gpt-5.6-sol @ xhigh)
-implements backend, and a Claude Opus subagent (@ xhigh, judge stages @ max)
-handles frontend/design/review. Remap freely:
+The defaults assume the interactive session's model orchestrates, `codex exec`
+implements backend, and a Claude Opus subagent handles frontend/design/review;
+the per-role effort tiers live in the Cast table in `SKILL.md`. Remap freely:
 
 - **Orchestrator** = whatever runs the interactive session (the most
   capable/expensive model you have).
 - **Implementer** = any strong CLI coding agent (`codex exec`, another Claude
   session, etc.). The only hard rule is that it is *not* the reviewer.
 - **Reviewer** = a **different model family** from the implementer, ideally.
-- **Effort tiers** (`xhigh`, `max`, …) are per-install — verify the enum on your
-  CLI (see `codex-recipes.md`; never pass an unlisted value, it is silently
-  coerced).
+- **Effort tiers** (`high`, `xhigh`, …) are per-install — verify each value on
+  your CLI with the two-step probe in `codex-recipes.md` before relying on it.
 
 ### 2. Project rules override this skill
 
