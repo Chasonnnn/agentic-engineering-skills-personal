@@ -1,100 +1,29 @@
 ---
 name: authmux
-description: Safely route AWS, Google Cloud, GitHub CLI, and SSH operations through repository-bound authmux Authentication Contexts. Use when authmux is installed and a task involves provider status, login, or authenticated commands; when a repository contains `.authmux.toml`; when the user asks an agent to avoid the wrong cloud account, project, GitHub identity, or SSH session; or when multiple projects use different provider identities concurrently. Resolve intent, verify identity evidence, use process-scoped execution where supported, and fail closed instead of switching global credentials or bypassing authmux.
+description: Route authenticated AWS, Google Cloud, GitHub CLI, and SSH work through a repository-bound authmux context with one guarded execution path and an external-terminal handoff for interactive login.
 ---
 
 # Authmux
 
-Use authmux as the authentication-context boundary for provider CLI work. Provider CLIs and operating-system credential stores retain credential custody; never extract, copy, print, or persist credentials.
+Use authmux only as the authentication-context boundary. Native providers and
+the operating system retain credential custody.
 
-## Core Rules
+## Normal path
 
-- Read the target repository's `AGENTS.md` and provider/deployment instructions first.
-- Prefer a repository Project Binding over an explicit context name.
-- Before authenticated work, run `authmux context show` and confirm the selected Authentication Context and Expected Identity are appropriate for the task.
-- Run each supported provider command through `authmux exec`; do not launch the entire coding agent inside authmux.
-- Never bypass a mismatch, unsupported provider composition, inactive SSH transport, or context-drift failure with a bare provider command.
-- Login is explicit and provider-owned. Keep interactive browser, device-code, password, and MFA exchanges attached to the user's terminal; do not reproduce their contents in reports.
-- Do not infer expiration or Session Usability from local metadata. Preserve authmux's reported evidence boundary.
+1. Read the target repository's agent and deployment instructions.
+2. In an unfamiliar repository, or after its working directory, Project
+   Binding, or user configuration changes, run `authmux context show` once.
+   Otherwise do not repeat it.
+3. Run the requested leaf operation directly through `authmux exec -- ...`.
+   Guarded execution resolves the binding, validates the provider evidence it
+   requires, filters ambient credentials, and fails closed.
+   Preserve the exact argv until the operation finishes or its single
+   continuity retry is exhausted.
+4. Do not run `status` or `doctor` as a routine preflight. Use `status` for an
+   explicit overview or identity investigation and `doctor` for configuration
+   or CLI diagnosis.
 
-## Workflow
-
-### 1. Resolve the intended context
-
-From the repository or a nested directory:
-
-```console
-authmux context show
-```
-
-Confirm:
-
-- `selection` is `project binding` when `.authmux.toml` is expected;
-- the binding source is inside the current Git root;
-- the Provider Profile and Expected Identity match the user's project;
-- no explicit `--context` is needed for normal project work.
-
-If no binding resolves, stop unless the user or repository instructions already identify the intended context. Do not guess from profile names, the currently active native account, or another repository.
-
-An explicitly confirmed context can be inspected from any directory:
-
-```console
-authmux context show --context CONTEXT
-```
-
-### 2. Observe authentication state
-
-Inspect one provider in the selected context:
-
-```console
-authmux status --provider aws
-authmux status --provider gcp
-authmux status --provider github
-authmux status --provider ssh
-```
-
-Inspect every configured context for an agent preflight:
-
-```console
-authmux status --all --json
-```
-
-Treat the result precisely:
-
-- `identity_match: match` establishes only the reported identity comparison.
-- `session_usability: indeterminate` is not live validation.
-- `evidence_level: local_metadata` does not prove provider access.
-- a nonzero aggregate exit means at least one provider failed; successful observations remain useful, but the failing provider is not ready.
-- GitHub status may contact GitHub. AWS and GCP status remain local observations; guarded execution supplies stronger live evidence where supported.
-
-Use JSON for automation. Do not scrape human-readable output when a JSON form exists.
-
-When local configuration or CLI readiness is unclear, diagnose without claiming a live Session:
-
-```console
-authmux doctor --provider PROVIDER
-```
-
-Doctor results do not replace guarded execution or an active SSH transport preflight.
-
-### 3. Reauthenticate only when required
-
-Use the exact resolved context and one provider:
-
-```console
-authmux login CONTEXT --provider aws
-authmux login CONTEXT --provider gcp
-authmux login CONTEXT --provider github
-authmux login CONTEXT --provider ssh
-```
-
-Login may mutate provider-owned credential or Session state and may require a browser or MFA. Do not retry with a different identity, switch a shared global profile, capture authorization URLs, or claim success from the native command alone. Verify authmux's post-login result.
-
-When interactive input is unavailable, report the exact login command and stop that provider operation. Do not attempt to automate MFA or obtain a one-time code from another source.
-
-### 4. Execute with the selected context
-
-Inside a bound repository:
+Examples:
 
 ```console
 authmux exec -- aws s3 ls
@@ -103,60 +32,75 @@ authmux exec -- gcloud projects describe PROJECT_ID
 authmux exec -- gh pr list
 ```
 
-Use an explicit context only outside a bound repository and only after confirming it:
+Use `--context CONTEXT` only outside a bound repository and only when repository
+instructions or the user already identify that context.
+
+## Interactive reauthentication
+
+Exit code `10` means stderr must contain one `exec-event-v1` JSON object. Accept
+it only when `event` is `reauthentication_required`, its context and provider
+match the attempted operation, and `retry` is `original_command_once`. A
+missing, malformed, or mismatched event fails closed.
+
+Run the event's `login_argv` exactly once inside the captured agent session. It
+must end in `--print-command`, so it plans one provider without starting native
+login:
 
 ```console
-authmux exec --context CONTEXT -- aws sts get-caller-identity
+authmux login CONTEXT --provider PROVIDER --print-command
 ```
 
-Authmux launches the literal argument vector, filters ambient credential variables, applies only the selected Provider Profile, re-resolves the context before spawn, and fails closed on identity mismatch or drift. Preserve the child exit code and do not retry through another context.
+Then report that the user should rerun the same `authmux login` without
+`--print-command` in a separate terminal, then stop that provider operation.
+Keeping authmux in the external path preserves provider selectors omitted from
+the sanitized native-command preview. Never ask the user to paste provider
+output, a browser URL, device or authorization code, password, token, or MFA
+value. After confirmation, retry the preserved original argv once without a
+status round trip. If it returns exit code `10` again, stop and report the
+repeated Reauthentication requirement; never start a second login or switch
+identity.
 
-### 5. Handle provider-specific boundaries
+GCP child failures do not produce this event because authmux cannot safely
+classify arbitrary child output. Do not infer Reauthentication from a generic
+nonzero child exit or retry it automatically.
 
-| Provider | Supported agent path | Boundary |
-| --- | --- | --- |
-| AWS | `authmux exec -- aws ...`, Terraform, or deployment commands | Guarded execution contacts STS, compares the account to the Expected Identity, and may refresh AWS-owned caches. |
-| Google Cloud | `authmux exec -- gcloud ...` for a declared gcloud plane; non-gcloud children require an explicitly declared ADC plane | Local identity/project selection can be checked, but child execution may still discover an expired provider Session. |
-| GitHub | `authmux exec -- gh ...` | Only `gh` is supported. `GH_CONFIG_DIR` does not select raw Git SSH keys or a Git credential helper. |
-| SSH | Preflight with status, then use native `ssh`, `scp`, or `rsync` | Generic authmux exec is unsupported. Authmux observes reusable OpenSSH transport state, not remote Session expiry. |
+If AWS identity observation reports that it could not reach the provider, do
+not start login. Request network access for the preserved guarded command and
+retry it once. Stop if the network-enabled retry fails; do not bypass authmux.
 
-For an SSH-dependent automated operation:
+## Native Git
 
-```console
-authmux status --context CONTEXT --provider ssh --require-active-transport
-```
+Run native `git fetch`, `git pull`, and `git push` directly through the
+repository's configured Git/SSH transport. Never require an authmux SSH
+Provider Profile or SSH status check for a Git remote, including
+`git@github.com` remotes. This is not an authmux bypass: authmux has no raw-Git
+selector contract and does not manage Git authentication.
 
-If inactive or unverifiable, stop before submitting work and provide:
+## Command and approval boundaries
 
-```console
-authmux login CONTEXT --provider ssh
-```
+- Run a literal leaf command, not `authmux exec -- sh`, `bash`, `zsh`, `env`,
+  or another general command launcher.
+- Scope durable approvals to the required guarded command family, such as
+  `authmux exec -- aws`; never request a blanket `authmux` prefix.
+- Never bypass a mismatch, context drift, unsupported provider composition, or
+  inactive required SSH transport with a bare provider command or ambient
+  selector.
+- Preserve child exit codes and do not retry through another context or
+  identity.
 
-After a successful preflight, use the repository's native SSH host alias normally. A ControlMaster can lapse after sleep, network changes, process termination, or server disconnects; its configured persistence is not an authentication lease.
+## Provider boundaries
 
-Raw `git fetch`, `git pull`, and `git push` continue through the repository's native Git/SSH configuration. Do not wrap them in a GitHub authmux context until authmux adds a tested raw-Git selector contract.
+- AWS, Google Cloud, and GitHub use guarded `authmux exec` paths. GitHub accepts
+  `gh`, not raw Git authentication.
+- SSH has no generic `exec` path. Before automated SSH work, require
+  `authmux status --context CONTEXT --provider ssh --require-active-transport`;
+  after it passes, use the repository's native SSH host alias. If it fails for
+  inactivity, use the external-terminal login handoff above.
+- For unattended deployment or log monitoring that may exceed a human Session,
+  use the repository's approved OIDC or workload-identity workflow. Do not keep
+  a user Session alive with a timer, create static cloud keys, or launch the
+  whole coding agent inside authmux.
 
-## Failure Handling
-
-Stop and report the sanitized failure when:
-
-- the Project Binding is missing, outside the current Git root, or resolves to an unexpected context;
-- Expected and Observed Identities mismatch;
-- authmux cannot establish the evidence required for guarded execution;
-- the provider requires interactive Reauthentication that the user has not completed;
-- mixed providers require an explicit `--provider` choice;
-- SSH transport is inactive or unverifiable before remote automation;
-- a requested child is unsupported by the selected Provider Adapter.
-
-Never work around these conditions by exporting `AWS_PROFILE`, `CLOUDSDK_ACTIVE_CONFIG_NAME`, `GH_TOKEN`, `GOOGLE_APPLICATION_CREDENTIALS`, or another selector/credential manually. Never run `gh auth switch`, silently activate a gcloud configuration, or substitute credentials from another project.
-
-## Completion Report
-
-Report only:
-
-- resolved Authentication Context and provider;
-- whether Identity Match and required Session/transport evidence passed;
-- the guarded command category and exit outcome;
-- the exact sanitized Reauthentication command when blocked.
-
-Do not include provider tokens, one-time codes, signed URLs, raw provider output, full credential paths, or secrets from child environments.
+Report only the resolved Authentication Context and provider, the required
+identity or transport evidence, the guarded command category and outcome, and
+the sanitized Reauthentication command when blocked.

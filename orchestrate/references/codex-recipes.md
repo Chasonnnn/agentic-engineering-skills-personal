@@ -102,7 +102,7 @@ Policy under this skill:
   escalation (owner decision 2026-09-05; `medium` was a short-lived trial).
   Review quality saturates at high; heavier tiers mainly burn usage limits
   and wall-clock.
-- `xhigh` and `ultra` are **retired** for all roles — it burned
+- `xhigh` and `ultra` are **retired** for all roles — they burned
   usage limits without measurable quality gain; the probe recipe above remains
   only as the method for verifying any future tier's enum support.
 
