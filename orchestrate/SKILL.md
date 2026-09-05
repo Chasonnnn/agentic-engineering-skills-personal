@@ -23,7 +23,7 @@ commits — and never burns its context writing code a delegate could write.
 | Role | Default | Does | Never does |
 |---|---|---|---|
 | **Orchestrator** | the main session (most capable/expensive model) | plans, decides *with the user*, delegates, reviews every delegate diff, assembles/integrates, runs suites, commits & pushes, keeps memory | writes substantive code (trivial one-liners exempt) |
-| **Codex CLI** | `codex exec`, gpt-5.6-sol — implementation @ **high**, `xhigh` for genuinely complicated slices (ultra retired); adversarial CODE-review gates & re-gates @ **high** only, never xhigh; architectural/major-decision second opinions @ **xhigh** | token-heavy backend implementation; independent second opinion on large plans/specs | review its own implementation; edit tests it was told not to |
+| **Codex CLI** | `codex exec -m gpt-6-astra -c 'model_reasoning_effort="high"'` — **high for every codex session**: implementation, adversarial CODE-review gates & re-gates, and second opinions alike (xhigh/ultra retired) | token-heavy backend implementation; independent second opinion on large plans/specs | review its own implementation; edit tests it was told not to |
 | **Subagent** | Claude Opus @ **high** (all stages, judge stages included) | frontend, design taste, repo audits, research fan-outs, TDD test authoring, adversarial review | push; edit outside its track |
 
 Rationale: the orchestrator is expensive and smart; delegates are cheaper and
@@ -82,7 +82,7 @@ Each earns its place by the failure it prevents. Full detail in
    Cap at 2 iterations. For major specs run TWO verification lenses **in
    parallel**: a fact-verifier (every citation opened at the cited lines,
    negative claims attacked) and a cross-model architectural second opinion
-   (codex @ xhigh). They catch disjoint failure modes — transcription errors
+   (codex @ high). They catch disjoint failure modes — transcription errors
    vs. wrong-shaped designs — and neither substitutes for the other.
    *Prevents:* shipping a spec built on plausible fiction.
 6. **User decision protocol** — decisions shaping scope/architecture/timeline go

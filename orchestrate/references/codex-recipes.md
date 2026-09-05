@@ -12,15 +12,15 @@ re-run verbatim for a re-gate), capture stdout and stderr separately:
 
 ```bash
 codex exec -m <model> \
-  -c 'model_reasoning_effort="xhigh"' \
+  -c 'model_reasoning_effort="high"' \
   -s read-only \
   -C <repo-root> \
   --json \
   - < prompt.txt > out.jsonl 2> err.txt   # run in background
 ```
 
-- `-m <model>` — e.g. `gpt-5.6-sol`.
-- `-c 'model_reasoning_effort="xhigh"'` — see the enum gotcha below.
+- `-m <model>` — `gpt-6-astra` (the standing codex model).
+- `-c 'model_reasoning_effort="high"'` — the standing effort for every codex session; see the enum gotcha below.
 - `-s` — sandbox: `read-only` for review/investigation, `workspace-write` for
   implementation (see below).
 - `-C <repo-root>` — run from the repo root regardless of cwd.
@@ -97,14 +97,12 @@ Probe in two steps — never conclude from the error message alone:
 
 Policy under this skill:
 
-- **Adversarial CODE-review gates / re-gates: `high` — never xhigh or ultra.**
-  Review quality saturates at high; the heavier tiers mainly burn usage limits
-  and wall-clock on a read-only diff review.
-- **Architectural / major-decision second opinions (specs, plans, design
-  docs): `xhigh`.** These are judgment tasks, not
-  checklist reviews — the heavier tier earns its cost here.
-- **Implementation: default `high`; `xhigh` for genuinely complicated slices.**
-  `ultra` is **retired** for all roles — it burned
+- **Every codex session — implementation, adversarial CODE-review gates /
+  re-gates, architectural second opinions: `high`.** One tier, no per-task
+  escalation (owner decision 2026-09-05; `medium` was a short-lived trial).
+  Review quality saturates at high; heavier tiers mainly burn usage limits
+  and wall-clock.
+- `xhigh` and `ultra` are **retired** for all roles — it burned
   usage limits without measurable quality gain; the probe recipe above remains
   only as the method for verifying any future tier's enum support.
 

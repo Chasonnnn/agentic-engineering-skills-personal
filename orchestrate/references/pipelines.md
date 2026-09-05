@@ -198,7 +198,7 @@ The pipeline exists to catch them before they become a spec.
    and an **unusable replay key**.
 4. **Final spec** with the **user's decisions recorded** inline (see §6).
 
-Run **codex as an independent second opinion** at `xhigh` against the draft.
+Run **codex as an independent second opinion** at `high` against the draft.
 **Cap at 2 iterations** — past that, the spec is either good enough or the design
 question needs the user.
 
