@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dependency Modernization"
+  short_description: "Upgrade dependencies with feature and compatibility review"
+  default_prompt: "Use $dependency-modernization to audit this project's upgrade candidates and implement the authorized changes with appropriate validation."
