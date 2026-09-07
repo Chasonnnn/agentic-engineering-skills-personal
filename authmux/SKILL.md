@@ -101,6 +101,8 @@ selector contract and does not manage Git authentication.
   a user Session alive with a timer, create static cloud keys, or launch the
   whole coding agent inside authmux.
 
-Report only the resolved Authentication Context and provider, the required
+For authentication reporting, include only the resolved Authentication Context and provider, the required
 identity or transport evidence, the guarded command category and outcome, and
 the sanitized Reauthentication command when blocked.
+
+Also report the requested operation's substantive result; the authentication summary does not replace it.

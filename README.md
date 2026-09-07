@@ -8,6 +8,7 @@ Clone once, then symlink each skill into the personal skills directory:
 
 ```sh
 git clone git@github.com:Chasonnnn/agentic-engineering-skills-personal.git ~/agentic-engineering-skills-personal
+ln -s ~/agentic-engineering-skills-personal/audit-skill ~/.claude/skills/audit-skill
 ln -s ~/agentic-engineering-skills-personal/board-sync ~/.claude/skills/board-sync
 ln -s ~/agentic-engineering-skills-personal/authmux ~/.claude/skills/authmux
 ln -s ~/agentic-engineering-skills-personal/codex ~/.claude/skills/codex
@@ -23,20 +24,32 @@ New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-
 
 | Skill | What it does |
 | --- | --- |
+| [audit-skill](audit-skill/SKILL.md) | Audit or improve skill instructions and helpers with source-specific evidence; includes optional comparison guidance and the Provencher article reference. |
 | [board-sync](board-sync/SKILL.md) | Sync planning state (specs/ADRs/roadmap) to a GitHub Project board as epic issues with nested sub-issues — epics on the board, slices hidden under them — plus an optional stale-issue refresh. |
 | [authmux](authmux/SKILL.md) | Resolve repository-bound authentication intent, verify provider identity evidence, route supported CLI commands through process-scoped contexts, and fail closed before wrong-account or wrong-project work. |
-| [codex](codex/SKILL.md) | Wraps the OpenAI Codex CLI for an independent second opinion: review (pass/fail gate on a diff), challenge (adversarial break-it), consult (ask anything, with session continuity). Ported from [gstack](https://github.com/garrytan/gstack)'s `/codex` skill — see credit note below. |
+| [codex](codex/SKILL.md) | Wraps the OpenAI Codex CLI for an independent second opinion: review (PASS/FAIL/INCOMPLETE on an explicit diff scope), challenge (adversarial break-it), consult (ask anything, with session continuity). Ported from [gstack](https://github.com/garrytan/gstack)'s `/codex` skill — see credit note below. |
 | [github-pr-validation-loop](github-pr-validation-loop/SKILL.md) | Audit open PRs against the current base branch, reimplement valid findings cleanly, close invalid or superseded noise with evidence, and monitor CI through completion. |
 | [no-use-effect](no-use-effect/SKILL.md) | Prefer explicit React data flow, replace ad-hoc Effects with derived state, event handlers, query libraries, or keyed remounting, and contain legitimate external synchronization in named hooks. |
-| [orchestrate](orchestrate/SKILL.md) | Multi-model orchestration: the main session plans/reviews/commits while codex + subagents implement, with cross-model review gates. (Folded in from `orchestrate-skill` with history; that repo is archived.) |
+| [orchestrate](orchestrate/SKILL.md) | Coordinates delegates, independent review, and integration; shares CLI execution with `codex`. (Folded in from `orchestrate-skill` with history; that repo is archived.) |
 | [review-and-remediate-server-logs](review-and-remediate-server-logs/SKILL.md) | Review live server logs, prioritize actionable failures, reproduce and fix their causes, validate through CI, and verify the result after an authorized deployment. |
 
 ## Conventions
 
 - One directory per skill, `SKILL.md` inside, frontmatter per Claude Code skill format.
 - Skills here are project-agnostic: per-project facts (repo, board number, doc paths) are inputs, never hardcoded.
-- House style per the `writing-great-skills` reference: user-invoked by default (`disable-model-invocation: true`), with automatic invocation retained when a skill explicitly defines activation conditions; use ordered steps with checkable completion criteria and keep gotchas in-skill.
+- Preserve each skill's invocation policy. Keep discovery concise, load conditional detail through references, and retain exact procedures where correctness requires them.
 
 ## Credit
 
 `codex/` is a standalone port of the `/codex` skill from [gstack](https://github.com/garrytan/gstack) (Garry Tan, MIT license) — the original wraps the OpenAI Codex CLI as one of ~30 skills in a much larger multi-agent toolkit. This port keeps the review/challenge/consult mechanics and drops everything wired into gstack's own infrastructure (telemetry, question-tuning auto-decide, checkpoint mode, gbrain sync, the `D<N>` AskUserQuestion format), so it runs standalone with no dependency on gstack being installed.
+
+## Helper validation
+
+Use the approved project/host Python runtime. Helpers use the standard library.
+
+```sh
+python -m unittest discover -s codex/tests -v
+python -m unittest discover -s github-pr-validation-loop/tests -v
+```
+
+The PR snapshot JSON now contains `coverage` and `pull_requests`; exit 2 signals incomplete coverage. The CI watcher requires explicit workflow IDs and a full commit SHA. See its skill for event selection, authentication, and remaining readiness checks.

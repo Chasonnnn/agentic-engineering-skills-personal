@@ -1,122 +1,43 @@
-# Provider Playbooks
+# Provider evidence queries
 
-Use only the section that matches the live environment. Replace placeholders with values discovered from configuration. Prefer structured output and bounded time windows.
+Use only the relevant provider. Resolve placeholders from approved configuration and route cloud CLI leaf commands through authmux where required. Do not infer the target identity from ambient credentials. Commands are starting points for read-only evidence, not permission to deploy or restart.
 
-## Google Cloud Run and Cloud Logging
+## Cloud Run and Cloud Logging
 
-Discover the project, region, services, and active revision:
+List/describe the named service with explicit project and region. Select revision names, traffic allocations, and image identifiers; avoid dumping environment variables. Bound a service query by `resource.type="cloud_run_revision"`, service name, and absolute `timestamp` limits. Add the active revision filter when attributing current defects.
 
-```sh
-gcloud config get-value project
-gcloud run services list --platform managed --project PROJECT --region REGION
-gcloud run services describe SERVICE --platform managed --project PROJECT --region REGION --format=json
-```
-
-Read a bounded service window:
+A safe request-log projection can select timestamp, revision, status, and severity:
 
 ```sh
-gcloud logging read \
-  'resource.type="cloud_run_revision" AND resource.labels.service_name="SERVICE" AND timestamp>="START_UTC" AND timestamp<="END_UTC"' \
-  --project PROJECT --limit 500 --order desc --format=json
+gcloud logging read 'RESOURCE_AND_TIME_FILTER' --project PROJECT --limit 500 --order desc \
+  --format='json(timestamp,resource.labels.revision_name,httpRequest.status,severity)'
 ```
 
-Useful filters:
+Add application fields only after verifying their schema is safe. Do not select full URLs, textPayload, or arbitrary error messages by default. A 500-record sample is not a complete error count. Use complete bounded retrieval or an authorized aggregate query for counts; separate request and application streams.
 
-```text
-httpRequest.status>=500
-severity>=ERROR
-resource.labels.revision_name="REVISION"
-jsonPayload.event="STRUCTURED_EVENT"
-```
+Inspect deployment/build metadata if the local checkout does not explain the active revision. Secret version metadata can often establish drift without fetching secret values; actual secret access remains a separate authorized operation.
 
-Query request logs separately from application logs when counts matter. Check `resource.labels.revision_name` before treating an event as current. Inspect Cloud Build or deployment history when artifact drift is plausible:
+## ECS and CloudWatch
 
-```sh
-gcloud builds list --project PROJECT --region REGION --limit 20 --format=json
-```
+Query service deployments and task-definition identifiers with explicit cluster/account/region. Project only the needed fields; task definitions may contain environment values. `filter-log-events` can page through a bounded millisecond time window, but full messages may contain sensitive fields. Choose a known-safe structured projection or a Logs Insights query over vetted fields before emitting results.
 
-For secret mismatches, compare version metadata or SHA-256 digests without displaying the values. Accessing secret material and changing a secret are separate privileged actions; obtain authorization for each.
-
-## AWS ECS and CloudWatch Logs
-
-Discover the deployed service and task definition:
-
-```sh
-aws ecs describe-services --cluster CLUSTER --services SERVICE --output json
-aws ecs describe-task-definition --task-definition TASK_DEFINITION --output json
-```
-
-Read a bounded log window. Convert timestamps to epoch milliseconds before invoking the command:
-
-```sh
-aws logs filter-log-events \
-  --log-group-name LOG_GROUP \
-  --start-time START_EPOCH_MS \
-  --end-time END_EPOCH_MS \
-  --limit 1000 \
-  --output json
-```
-
-Use CloudWatch Logs Insights for grouping when available. Start with fields such as `@timestamp`, `@message`, `@logStream`, status, route, exception class, and structured event name. Confirm the ECS deployment or task-definition revision before mapping a failure to source.
+If a local parser is necessary, keep unredacted data out of tool output and persisted scratch files. Preserve error and pagination status through the parser. Counts from limited events remain samples; verify completed Insights query status and its relevant limits before treating aggregates as complete.
 
 ## Kubernetes
 
-Inventory workload and rollout state:
+Confirm context/namespace and selected workload. For deployment logs, explicitly include all selected pods as well as all containers when claiming workload-wide coverage. On versions supporting it:
 
 ```sh
-kubectl config current-context
-kubectl -n NAMESPACE get deploy,pods -o wide
-kubectl -n NAMESPACE rollout status deployment/DEPLOYMENT
-kubectl -n NAMESPACE get deployment DEPLOYMENT -o json
+kubectl -n NAMESPACE logs deployment/DEPLOYMENT --all-pods=true --all-containers=true \
+  --since-time=START_UTC --timestamps=true --prefix=true
 ```
 
-Read bounded logs for every container selected by the workload:
+This command emits raw logs: use it only for a known-safe stream or route it through a vetted sanitizer before tool output. Check installed flag support. Otherwise enumerate matching pods and query each container; deployment shorthand alone may select one pod. Record upper query time and pod/revision coverage. Use per-pod `--previous` for previous-container crashes; replaced/deleted pods may require centralized retained logs. Readiness alone does not establish application health.
 
-```sh
-kubectl -n NAMESPACE logs deployment/DEPLOYMENT --all-containers=true --since=1h --timestamps=true
-kubectl -n NAMESPACE logs POD --container CONTAINER --previous --timestamps=true
-kubectl -n NAMESPACE get events --sort-by=.lastTimestamp
-```
+## systemd and containers
 
-Use `--previous` for crash-loop evidence, but verify whether the pod was replaced during a rollout. Do not infer application health from pod readiness alone.
+Use explicit unit/container identity and absolute journal/log bounds. Project only safe metadata from `systemctl`, deployment definitions, and `docker inspect`; full inspection can expose environment values. Sanitize selected log fields before emitting journal or container records. Confirm the running executable/image matches the source under investigation. Do not restart inherited services or store a raw log artifact merely for convenience.
 
-## systemd and Host Services
+## Coverage
 
-Confirm unit state and read a bounded journal window:
-
-```sh
-systemctl status UNIT --no-pager
-journalctl -u UNIT --since 'START' --until 'END' --output json
-journalctl -u UNIT -p warning --since 'START' --no-pager
-```
-
-Confirm the running executable, environment source, and unit version before editing a checkout. Do not restart a unit unless explicitly authorized.
-
-## Containers and Generic JSON Logs
-
-Identify ownership before stopping or restarting anything:
-
-```sh
-docker ps --no-trunc
-docker inspect CONTAINER
-docker logs --since 1h --timestamps CONTAINER
-```
-
-For newline-delimited JSON, retain the original artifact and derive sanitized summaries:
-
-```sh
-jq -r '[.service, .revision, .httpRequest.status, .jsonPayload.event, .jsonPayload.error_class] | @tsv' logs.jsonl
-```
-
-Do not dump full records if they may contain request bodies, authorization headers, cookies, provider payloads, or user identifiers. Select an explicit safe field allowlist.
-
-## Query Discipline
-
-- Use absolute timestamps and record the timezone.
-- Set a finite result limit, then widen deliberately if truncation is possible.
-- Separate request/access logs from application logs before comparing counts.
-- Group by stable fields rather than entire messages containing UUIDs or timestamps.
-- Check active and retired revisions separately.
-- Keep the original query alongside every count.
-- Verify a success path as well as the failure path.
-- Treat log exclusions, sampling, ingestion delay, and retention as evidence limitations.
+Keep the exact query, identities, time bounds, selection/aggregation method, and completeness limits with each observation. Bound result size for exploration; make a separate completeness decision for counts. Sampling, exclusions, rotation, retention, replaced replicas, and ingestion delay can hide events. A successful query is not proof of a complete population.

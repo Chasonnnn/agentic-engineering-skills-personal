@@ -1,204 +1,23 @@
 ---
 name: no-use-effect
-description: |
-  Prefer explicit React data flow and narrowly contain legitimate Effects.
-  ACTIVATE when writing React components, refactoring existing useEffect calls,
-  reviewing PRs with useEffect, or when an agent adds useEffect "just in case."
-  Provides five replacement patterns plus reviewed external-system exceptions.
+description: Review or replace unnecessary React Effects while preserving dependency-correct external synchronization.
 ---
 
 # No ad-hoc useEffect
 
-Do not use `useEffect` for ordinary React data flow. Prefer derived state, event
-handlers, reducers, data-fetching libraries, conditional rendering, or keyed
-remounting. Keep Effects only when React must synchronize with an external
-system, and contain those Effects in a narrowly named hook with complete cleanup.
+Prefer explicit React data flow. Do not remove a valid external synchronization Effect merely to satisfy this skill. Use the project's existing architecture and libraries; an Effect alone is not a reason to install a query library or add lint policy.
 
-## Quick Reference
+| Purpose | Preferred approach |
+|---|---|
+| Derive values from props/state | Compute during render; memoize only when useful |
+| Respond to a user action | Perform the action in its event handler |
+| Fetch application data | Existing framework loader, server data path, or query library |
+| Reset all local state for a new entity | Key the owning component when a full remount is intended |
+| Synchronize an external system | Named hook with a normal Effect, exhaustive dependencies, and cleanup |
 
-- Lint rule: restrict direct `useEffect` in pages and components; allow reviewed synchronization hooks
-- React docs: [You Might Not Need an Effect](https://react.dev/learn/you-might-not-need-an-effect)
-- Origin: [https://x.com/alvinsng/status/2033969062834045089](https://x.com/alvinsng/status/2033969062834045089)
+## External synchronization
 
-| Instead of useEffect for... | Use |
-|----------------------------|-----|
-| Deriving state from other state/props | Inline computation (Rule 1) |
-| Fetching data | `useQuery` / data-fetching library (Rule 2) |
-| Responding to user actions | Event handlers (Rule 3) |
-| One-time external sync on mount | `useMountEffect` (Rule 4) |
-| Reactive external sync | Named synchronization hook with exhaustive dependencies (Rule 4) |
-| Resetting state when a prop changes | `key` prop on parent (Rule 5) |
-
-## When to Use This Skill
-
-- Writing new React components
-- Refactoring existing `useEffect` calls
-- Reviewing PRs that introduce `useEffect`
-- An agent adds `useEffect` "just in case"
-
-## Workflow
-
-### 1. Identify the useEffect
-
-Determine what the effect is doing -- deriving state, fetching data, responding
-to an event, syncing with an external system, or resetting state. Do not remove
-a valid external synchronization Effect merely to satisfy this skill.
-
-### 2. Apply the Correct Pattern
-
-Use the five rules below to pick the right replacement or containment boundary.
-
-### 3. Verify
-
-Use the repository's `AGENTS.md`, `CONTRIBUTING.md`, and package scripts to run
-the relevant typecheck, focused tests, full test suite, and lint checks. Discover
-the exact commands from the target repository instead of assuming a package
-manager or project layout.
-
-## The Escape Hatch: useMountEffect
-
-For a true mount/unmount lifecycle with no reactive dependencies:
-
-The implementation wraps `useEffect` with an empty dependency array to make intent explicit:
-
-```typescript
-export function useMountEffect(effect: () => void | (() => void)) {
-  /* eslint-disable no-restricted-syntax */
-  useEffect(effect, []);
-}
-```
-
-Do not use `useMountEffect` to hide changing props, state, context, or callbacks.
-That creates stale closures. If external synchronization must react to changing
-values, keep an exhaustive dependency list inside a narrowly named custom hook.
-
-## Replacement Patterns
-
-### Rule 1: Derive state, do not sync it
-
-Most effects that set state from other state are unnecessary and add extra renders.
-
-```typescript
-// BAD: Two render cycles - first stale, then filtered
-function ProductList() {
-  const [products, setProducts] = useState([]);
-  const [filteredProducts, setFilteredProducts] = useState([]);
-
-  useEffect(() => {
-    setFilteredProducts(products.filter((p) => p.inStock));
-  }, [products]);
-}
-
-// GOOD: Compute inline in one render
-function ProductList() {
-  const [products, setProducts] = useState([]);
-  const filteredProducts = products.filter((p) => p.inStock);
-}
-```
-
-**Smell test:** You are about to write `useEffect(() => setX(deriveFromY(y)), [y])`, or you have state that only mirrors other state or props.
-
-### Rule 2: Use data-fetching libraries
-
-Effect-based fetching creates race conditions and duplicated caching logic.
-
-```typescript
-// BAD: Race condition risk
-function ProductPage({ productId }) {
-  const [product, setProduct] = useState(null);
-
-  useEffect(() => {
-    fetchProduct(productId).then(setProduct);
-  }, [productId]);
-}
-
-// GOOD: Query library handles cancellation/caching/staleness
-function ProductPage({ productId }) {
-  const { data: product } = useQuery({
-    queryKey: ['product', productId],
-    queryFn: () => fetchProduct(productId),
-  });
-}
-```
-
-**Smell test:** Your effect does `fetch(...)` and then `setState(...)`, or you are re-implementing caching, retries, cancellation, or stale handling.
-
-### Rule 3: Event handlers, not effects
-
-If a user clicks a button, do the work in the handler.
-
-```typescript
-// BAD: Effect as an action relay
-function LikeButton() {
-  const [liked, setLiked] = useState(false);
-
-  useEffect(() => {
-    if (liked) {
-      postLike();
-      setLiked(false);
-    }
-  }, [liked]);
-
-  return <button onClick={() => setLiked(true)}>Like</button>;
-}
-
-// GOOD: Direct event-driven action
-function LikeButton() {
-  return <button onClick={() => postLike()}>Like</button>;
-}
-```
-
-**Smell test:** State is used as a flag so an effect can do the real action, or you are building "set flag -> effect runs -> reset flag" mechanics.
-
-### Rule 4: Contain external synchronization
-
-Good uses: DOM integration, browser API subscriptions, sockets, timers,
-third-party widget lifecycles, and analytics caused by a component becoming visible.
-
-Use `useMountEffect` only for setup and cleanup that are truly tied to one mount.
-
-```typescript
-// BAD: Guard inside effect
-function VideoPlayer({ isLoading }) {
-  useEffect(() => {
-    if (!isLoading) playVideo();
-  }, [isLoading]);
-}
-
-// GOOD: Mount only when preconditions are met
-function VideoPlayerWrapper({ isLoading }) {
-  if (isLoading) return <LoadingScreen />;
-  return <VideoPlayer />;
-}
-
-function VideoPlayer() {
-  useMountEffect(() => playVideo());
-}
-```
-
-Use `useMountEffect` for dependencies that are stable by contract (for example,
-a module singleton or ref). Do not assume a context value is stable without
-verifying its provider contract:
-
-```typescript
-// BAD: useEffect with dependency that never changes
-useEffect(() => {
-  connectionManager.on('connected', handleConnect);
-  return () => connectionManager.off('connected', handleConnect);
-}, [connectionManager]); // connectionManager is a singleton from context
-
-// GOOD: useMountEffect for stable dependencies
-
-useMountEffect(() => {
-  connectionManager.on('connected', handleConnect);
-  return () => connectionManager.off('connected', handleConnect);
-});
-```
-
-**Smell test:** You are synchronizing with an external system, and the behavior is naturally "setup on mount, cleanup on unmount."
-
-If the external system must resynchronize when a value changes, use a named hook
-with a normal Effect and exhaustive dependencies:
+Keep each Effect focused on one external resource. Declare every reactive value it reads, including callbacks. A stable connection object does not make a captured callback stable. Avoid generic `useMountEffect(callback)` wrappers that hide dependency analysis; prefer hooks named for the synchronization they perform.
 
 ```typescript
 function useRoomConnection(roomId: string) {
@@ -210,55 +29,16 @@ function useRoomConnection(roomId: string) {
 }
 ```
 
-The exception is the synchronization boundary itself, not permission to mix
-derived state, event relays, or unrelated orchestration into that Effect.
+Empty dependencies are appropriate only when setup reads no reactive values. They do not promise execution exactly once: cleanup and setup must tolerate development Strict Mode and remounts. Keep subscriptions, timers, and widgets reversible where their APIs support it. Do not treat a conditional Effect as inherently wrong; condition changes may be the intended synchronization.
 
-### Rule 5: Reset with key, not dependency choreography
+For example, synchronizing video playback with a reactive playing state is legitimate external synchronization. Moving it behind conditional mounting can change state preservation and lifecycle behavior, so it is not an equivalent default rewrite.
 
-```typescript
-// BAD: Effect attempts to emulate remount behavior
-function VideoPlayer({ videoId }) {
-  useEffect(() => {
-    loadVideo(videoId);
-  }, [videoId]);
-}
+## Data and reset boundaries
 
-// GOOD: key forces clean remount
-function VideoPlayer({ videoId }) {
-  useMountEffect(() => {
-    loadVideo(videoId);
-  });
-}
+A query library can coordinate caching and stale results. Request cancellation requires using its supplied AbortSignal in the transport; a query function that ignores it does not cancel the underlying request automatically. Retain relevant loading/error behavior when replacing an Effect. If the project uses direct Effect fetching, preserve dependency correctness and stale-response protection.
 
-function VideoPlayerWrapper({ videoId }) {
-  return <VideoPlayer key={videoId} videoId={videoId} />;
-}
-```
+Use `key` when changing entity identity should reset the entire component subtree, including local state and focus. It is too broad when only one field should change or an external resource should resynchronize. For a new document editor, `<Editor key={documentId} documentId={documentId} />` may express an intentional fresh editor; inspect the intended state lifetime first.
 
-**Smell test:** You are writing an effect whose only job is to reset local state when an ID/prop changes, or you want the component to behave like a brand-new instance for each entity.
+Validate changed observable behavior and relevant cleanup or race paths with the project's focused checks. Run broader suites when required by project rules or affected scope, not for every Effect edit.
 
-## Component Structure Convention
-
-Computed values come after hooks and local state, never via `useEffect`:
-
-```typescript
-export function FeatureComponent({ featureId }: ComponentProps) {
-  // Hooks first
-  const { data, isLoading } = useQueryFeature(featureId);
-
-  // Local state
-  const [isOpen, setIsOpen] = useState(false);
-
-  // Computed values (NOT useEffect + setState)
-  const displayName = user?.name ?? 'Unknown';
-
-  // Event handlers
-  const handleClick = () => { setIsOpen(true); };
-
-  // Early returns
-  if (isLoading) return <Loading />;
-
-  // Render
-  return <Flex direction="column" gap="lg">...</Flex>;
-}
-```
+[React: unnecessary Effects](https://react.dev/learn/you-might-not-need-an-effect) · [React: Effect lifecycle](https://react.dev/reference/react/useEffect) · [TanStack Query cancellation](https://tanstack.com/query/latest/docs/framework/react/guides/query-cancellation)

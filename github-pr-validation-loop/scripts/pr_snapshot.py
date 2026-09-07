@@ -8,6 +8,7 @@ import json
 import subprocess
 import sys
 from typing import Any
+from github_cli import CliError, add_auth_options, gh_json
 
 
 LIST_FIELDS = [
@@ -17,20 +18,14 @@ LIST_FIELDS = [
     "author",
     "headRefName",
     "baseRefName",
+    "baseRefOid",
+    "headRefOid",
     "isDraft",
     "labels",
     "updatedAt",
 ]
 
-VIEW_FIELDS = ["body", "files", "commits", "statusCheckRollup"]
-
-
-def run_gh(args: list[str]) -> Any:
-    command = ["gh", *args]
-    result = subprocess.run(command, check=False, text=True, capture_output=True)
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or f"command failed: {' '.join(command)}")
-    return json.loads(result.stdout or "null")
+VIEW_FIELDS = ["body", "files", "changedFiles", "commits", "statusCheckRollup"]
 
 
 def truncate(value: str | None, limit: int) -> str:
@@ -42,20 +37,24 @@ def truncate(value: str | None, limit: int) -> str:
     return text[: limit - 3].rstrip() + "..."
 
 
-def fetch_prs(state: str, limit: int, repo: str | None) -> list[dict[str, Any]]:
-    args = ["pr", "list", "--state", state, "--limit", str(limit), "--json", ",".join(LIST_FIELDS)]
+def fetch_prs(state: str, limit: int, repo: str | None, options) -> tuple[list[dict[str, Any]], bool]:
+    args = ["pr", "list", "--state", state, "--limit", str(limit + 1), "--json", ",".join(LIST_FIELDS)]
     if repo:
         args.extend(["--repo", repo])
-    prs = run_gh(args)
+    all_prs = gh_json(args, options)
+    truncated = len(all_prs) > limit
+    prs = all_prs[:limit]
     for pr in prs:
         view_args = ["pr", "view", str(pr["number"]), "--json", ",".join(VIEW_FIELDS)]
         if repo:
             view_args.extend(["--repo", repo])
         try:
-            pr.update(run_gh(view_args))
-        except RuntimeError as exc:
+            pr.update(gh_json(view_args, options))
+        except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as exc:
+            if isinstance(exc, CliError) and exc.returncode == 10:
+                raise
             pr["viewError"] = str(exc)
-    return prs
+    return prs, truncated
 
 
 def normalize(prs: list[dict[str, Any]], body_limit: int) -> list[dict[str, Any]]:
@@ -73,8 +72,8 @@ def normalize(prs: list[dict[str, Any]], body_limit: int) -> list[dict[str, Any]
         for item in pr.get("statusCheckRollup", []) or []:
             checks.append(
                 {
-                    "name": item.get("name") or item.get("workflowName"),
-                    "status": item.get("status"),
+                    "name": item.get("name") or item.get("context") or item.get("workflowName"),
+                    "status": item.get("status") or item.get("state"),
                     "conclusion": item.get("conclusion"),
                 }
             )
@@ -86,6 +85,9 @@ def normalize(prs: list[dict[str, Any]], body_limit: int) -> list[dict[str, Any]
                 "author": (pr.get("author") or {}).get("login"),
                 "base": pr.get("baseRefName"),
                 "head": pr.get("headRefName"),
+                "headSha": pr.get("headRefOid"),
+                "baseSha": pr.get("baseRefOid"),
+                "filesIncomplete": len(files) < pr.get("changedFiles", len(files)),
                 "draft": pr.get("isDraft"),
                 "updatedAt": pr.get("updatedAt"),
                 "labels": [item.get("name") for item in pr.get("labels", [])],
@@ -104,6 +106,8 @@ def print_markdown(prs: list[dict[str, Any]]) -> None:
         print(f"## #{pr['number']} {pr['title']}")
         print(f"- URL: {pr['url']}")
         print(f"- Base/head: {pr['base']} <- {pr['head']}")
+        print(f"- Base/head SHA: {pr['baseSha']} <- {pr['headSha']}")
+        print(f"- Files incomplete: {pr['filesIncomplete']}")
         print(f"- Author: {pr['author']}")
         if pr["labels"]:
             print(f"- Labels: {', '.join(pr['labels'])}")
@@ -135,19 +139,31 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=30)
     parser.add_argument("--body-limit", type=int, default=2000)
     parser.add_argument("--format", choices=["json", "markdown"], default="markdown")
+    add_auth_options(parser)
     args = parser.parse_args()
+    if args.limit <= 0 or args.body_limit < 4:
+        parser.error("--limit must be positive and --body-limit at least 4")
 
     try:
-        prs = normalize(fetch_prs(args.state, args.limit, args.repo), args.body_limit)
-    except RuntimeError as exc:
+        raw, truncated = fetch_prs(args.state, args.limit, args.repo, args)
+        prs = normalize(raw, args.body_limit)
+    except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as exc:
         print(str(exc), file=sys.stderr)
+        if isinstance(exc, CliError) and exc.returncode == 10:
+            print("Stopped leaf argv: " + json.dumps(exc.command), file=sys.stderr)
+            return 10
         return 1
 
+    incomplete = truncated or any(pr["viewError"] or pr["filesIncomplete"] for pr in prs)
+    coverage = {"queue_truncated": truncated, "detail_errors": sum(bool(pr["viewError"]) for pr in prs),
+                "files_incomplete": any(pr["filesIncomplete"] for pr in prs),
+                "count": len(prs), "scope": "summary; bodies and commit/check details may be abbreviated"}
     if args.format == "json":
-        print(json.dumps(prs, indent=2, sort_keys=True))
+        print(json.dumps({"coverage": coverage, "pull_requests": prs}, indent=2, sort_keys=True))
     else:
+        print("Coverage: " + json.dumps(coverage))
         print_markdown(prs)
-    return 0
+    return 2 if incomplete else 0
 
 
 if __name__ == "__main__":

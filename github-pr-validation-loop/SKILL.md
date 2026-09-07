@@ -1,80 +1,44 @@
 ---
 name: github-pr-validation-loop
-description: Audit and resolve GitHub pull request queues by validating each open PR against the current base branch, classifying valid/invalid/duplicate/release PRs, implementing clean consolidated fixes with test-first workflow when findings are valid, closing invalid or superseded PRs with evidence, pushing accepted fixes, and monitoring CI until relevant branch runs are green. Use when asked to review, triage, validate, close, consolidate, fix, or land open GitHub PRs.
+description: Validate a GitHub PR queue against current base code and resolve or consolidate findings within the requested scope.
 disable-model-invocation: true
 ---
 
-# GitHub PR Validation Loop
+# GitHub PR validation loop
 
-## Overview
+Treat a PR's claim and proposed implementation separately. Validate against the current target branch. Keep read-only audit, local fixes, publication, and PR closure within existing user authorization; do not turn a review request into a cleanup campaign.
 
-Use this skill to turn a noisy PR queue into a verified outcome: valid findings become clean repo-native fixes, duplicates and invalid PRs are closed with evidence, and pushed work is followed through until CI is green.
+## Queue and decisions
 
-Do not treat a PR diff as trusted implementation. Treat it as a finding report that must be checked against the current base branch.
+Identify the repository, base revisions, requested PR set, and existing dirty work. Preserve unrelated files and staged changes. Use the repository's approved GitHub authentication path. Read [references/disposition-guide.md](references/disposition-guide.md) when classifying or closing mixed queues.
 
-## Workflow
+`scripts/pr_snapshot.py` provides a bounded summary, not a complete diff or authoritative check suite. It reports queue truncation, missing file details, and view errors; exit 2 means incomplete coverage. Increase the requested limit or query the remaining scope before claiming a complete queue audit. Reopen full bodies, paginated file/commit details, and current checks when needed for a decision. The snapshot records base/head IDs, but recheck them before mutation.
 
-1. Establish the operating surface.
-   - Read local repository instructions first (`AGENTS.md`, `CONTRIBUTING.md`, or equivalent).
-   - Check `git status --short --branch` before mutating anything.
-   - Note ahead/behind state, unstaged files, and staged files separately. If unrelated staged files already exist, use a path-limited commit or otherwise avoid including them.
-   - Identify the base branch and the exact open PR set.
-   - Preserve unrelated local changes. Do not create a branch, commit, push, or close PRs if the user requested read-only audit only.
+For manual inspection, supported view fields include `title,body,files,commits,statusCheckRollup,headRefOid,baseRefOid`; there is no `checks` field. Supply an explicit repository when outside its checkout.
 
-2. Snapshot the PR queue.
-   - Prefer `scripts/pr_snapshot.py` for a compact queue summary.
-   - Otherwise use `gh pr list` plus `gh pr view <number> --json title,body,files,commits,checks,statusCheckRollup`.
-   - Capture enough evidence to compare the PR claim, touched files, and current base implementation.
+Classify as valid, duplicate, invalid, release/tooling, or needs-info. Inspect relevant current-base callers and tests, and reproduce consequential bug claims where practical. Failure to reproduce alone is not evidence that a claim is false. A bad proposed patch can still identify a valid problem.
 
-3. Classify each PR.
-   - `valid`: the finding is real on current base and needs a fix.
-   - `duplicate`: current base or another planned consolidated fix already covers it.
-   - `invalid`: the finding is false, obsolete, harmful, or unsupported by code/tests.
-   - `release/tooling`: release automation, dependency bot, or workflow PR that should be left alone unless explicitly in scope.
-   - `needs-info`: cannot be resolved without more access, reproduction data, or user intent.
+## Resolution
 
-4. Validate before acting.
-   - Inspect current base code, not just the PR branch.
-   - Compare the PR diff with existing behavior and tests.
-   - For bug claims, reproduce with a failing test where practical.
-   - For performance claims, verify generated SQL, algorithmic behavior, or measurable cost.
-   - For accessibility/UI claims, verify the DOM or source pattern and add a bounded regression test when feasible.
+Implement the smallest repo-native correction for valid findings. Consolidate related changes when useful; do not automatically adopt bot commits. Preserve project test-first requirements and independently check that tests exercise the claimed behavior. Keep generated notes and unrelated cleanup out of commits.
 
-5. Resolve valid findings with a clean implementation.
-   - Do not cherry-pick or directly adopt bot commits unless the user explicitly asks.
-   - Consolidate related valid findings into one curated fix when that reduces churn.
-   - Write or update tests first when applicable.
-   - Keep generated metadata, scratch files, and unrelated refactors out of the fix.
-   - Run focused tests first, then full repo gates required by local instructions.
+Close invalid PRs only with affirmative evidence. Close superseded work after the replacement is integrated, or when the user explicitly authorizes closing in favor of a linked open replacement. A local fix alone is not a landed replacement. Leave unrelated release/tooling PRs alone. Comments are external writes and require authorization from the requested resolution task.
 
-6. Close invalid or superseded PRs.
-   - Close only after recording evidence.
-   - Use a short comment that states the disposition and why.
-   - For superseded PRs, include the replacement commit or PR URL.
-   - Leave release PRs and unrelated active work open unless they are explicitly part of the request.
+Validate focused behavior and the project's required gates, inspect the exact commit set, then publish when authorized. Broad formatting or credential-related code is a reason to inspect scope and risk, not an automatic new permission round if the requested work already covers it. Actual secret rotation, destructive operations, and deployment retain their own task boundaries.
 
-7. Push and monitor.
-   - Push only the intended commits.
-   - Monitor branch-level GitHub runs; commit-scoped status can lag.
-   - Prefer `scripts/ci_watch.py --branch <branch> --head-sha <sha>` when available.
-   - Do not report the work complete until local gates pass and the relevant CI run has completed, or until you clearly state that CI is still running.
+## CI evidence
 
-8. Report the result.
-   - List each PR with its disposition.
-   - Include replacement commit/PR information for valid consolidated fixes.
-   - Summarize tests and CI.
-   - Call out anything left open intentionally and any local dirty files that were not part of the work.
+`scripts/ci_watch.py` requires a full SHA and explicit expected workflow IDs. Resolve that set from applicable workflow triggers and project requirements before running; observed runs cannot tell you which required workflow is missing. The default event is `push`; pass the intended event when different. It fetches paginated exact-head runs, selects the newest run/attempt per expected workflow, and waits for every selected workflow to succeed. Skipped, neutral, cancelled, and failed required runs are not silently green.
 
-## Decision Rules
+```bash
+python scripts/ci_watch.py --repo OWNER/REPO --branch BRANCH --head-sha FULL_SHA \
+  --workflow-id FIRST_ID --workflow-id SECOND_ID --event push
+```
 
-- Valid PRs are evidence, not patches. Re-implement the smallest correct fix in the codebase's style.
-- A PR is duplicate only when current base or the consolidated fix fully covers the finding.
-- A PR is invalid only when you can explain why the claim does not hold on current base or would make behavior worse.
-- If multiple PRs are valid but noisy, make one clean fix and close the originals as superseded after the fix lands.
-- If a PR touches secrets, credentials, destructive migrations, broad formatting, or production operations, pause and get explicit user confirmation before acting.
+Both Python helpers accept `--authmux` and optional `--context CONTEXT` for a context already authorized outside a bound repository. They wrap each `gh` leaf command; do not wrap the whole Python process through authmux. Without `--authmux`, they use native gh for environments whose policy permits it. Resolve script paths from this skill's directory and use the approved Python runtime.
 
-## Resources
+Both helpers stop immediately on authmux exit 10, preserving its event and the stopped leaf argv on stderr. Follow the authmux handoff for that exact operation; do not blindly rerun the whole snapshot as its continuity retry.
 
-- `scripts/pr_snapshot.py`: Build a compact JSON or Markdown snapshot of open PRs using `gh`.
-- `scripts/ci_watch.py`: Poll GitHub Actions branch runs until the relevant head SHA is green, failed, or timed out.
-- `references/disposition-guide.md`: Use for classification details and close-comment templates when the queue has mixed valid, duplicate, invalid, and release PRs.
+Watcher exit codes: 0 means the declared workflow set passed; 1 means a required workflow failed; 2 means timeout, missing/incomplete evidence, or query failure. This does not prove branch protection, external CI, deployments, or every job contract is satisfied. Inspect required checks and per-job results separately when those determine readiness. PR merge refs and merge queues may run on a different SHA; verify the actual required revision instead of substituting a branch run.
+
+Report each disposition, replacement links, validation, exact-head CI evidence, and remaining work. Keep local, pushed, integrated, deployed, and verified states distinct.

@@ -24,4 +24,4 @@ Do not copy user configuration into the skill. Each machine keeps its own authmu
 
 ## Activation
 
-The skill may activate automatically when authmux is installed and a task involves authenticated provider CLI work, or when a repository contains `.authmux.toml`. Invoke it explicitly as `$authmux` when you want a full authentication preflight before cloud, GitHub CLI, or SSH operations.
+The skill may activate automatically when authmux is installed and a task involves authenticated provider CLI work, or when a repository contains `.authmux.toml`. Invoke it explicitly as `$authmux` to route a requested cloud, GitHub CLI, or SSH operation through the normal guarded path. Use status or doctor only for the investigations described in SKILL.md.

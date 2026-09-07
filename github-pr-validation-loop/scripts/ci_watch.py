@@ -1,128 +1,108 @@
 #!/usr/bin/env python3
-"""Poll GitHub Actions branch runs until the selected head SHA is done."""
-
-from __future__ import annotations
-
+"""Wait for explicit GitHub Actions workflows on an exact commit and event."""
 import argparse
 import json
+import math
+import re
 import subprocess
 import sys
 import time
-from typing import Any
+from urllib.parse import urlencode
+from github_cli import CliError, add_auth_options, gh_json
 
 
-RUN_FIELDS = [
-    "databaseId",
-    "workflowName",
-    "status",
-    "conclusion",
-    "headSha",
-    "displayTitle",
-    "url",
-    "createdAt",
-]
-
-SUCCESS_CONCLUSIONS = {"success", "skipped", "neutral"}
-FAILURE_CONCLUSIONS = {"failure", "cancelled", "timed_out", "action_required"}
+def git(*args):
+    return subprocess.check_output(['git', *args], text=True, stderr=subprocess.PIPE).strip()
 
 
-def run_command(command: list[str]) -> str:
-    result = subprocess.run(command, check=False, text=True, capture_output=True)
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or f"command failed: {' '.join(command)}")
-    return result.stdout
+def fetch_runs(options, timeout):
+    query = urlencode({'head_sha': options.head_sha, 'branch': options.branch,
+                       'event': options.event, 'per_page': 100})
+    pages = gh_json(['api', '--paginate', '--slurp',
+                     f'repos/{options.repo}/actions/runs?{query}'], options, timeout)
+    if not isinstance(pages, list) or not pages:
+        raise ValueError('missing workflow response pages')
+    runs = []
+    totals = []
+    for page in pages:
+        totals.append(page['total_count'])
+        runs.extend(page['workflow_runs'])
+    # Filtered Actions searches have a 1000-result cap; never infer completeness at it.
+    if max(totals) >= 1000 or len({run['id'] for run in runs}) < max(totals):
+        raise ValueError('workflow run inventory incomplete or capped')
+    return runs
 
 
-def current_branch() -> str:
-    return run_command(["git", "branch", "--show-current"]).strip()
-
-
-def head_sha() -> str:
-    return run_command(["git", "rev-parse", "HEAD"]).strip()
-
-
-def fetch_runs(branch: str, repo: str | None, limit: int) -> list[dict[str, Any]]:
-    command = [
-        "gh",
-        "run",
-        "list",
-        "--branch",
-        branch,
-        "--limit",
-        str(limit),
-        "--json",
-        ",".join(RUN_FIELDS),
-    ]
-    if repo:
-        command.extend(["--repo", repo])
-    return json.loads(run_command(command) or "[]")
-
-
-def summarize(runs: list[dict[str, Any]]) -> str:
-    lines = []
+def assess(runs, sha, branch, event, expected):
+    latest = {}
     for run in runs:
-        state = run.get("conclusion") or run.get("status")
-        lines.append(f"{run.get('workflowName')} [{state}] {run.get('url')}")
-    return "\n".join(lines)
+        if (run.get('head_sha'), run.get('head_branch'), run.get('event')) != (sha, branch, event):
+            continue
+        workflow = run.get('workflow_id')
+        if workflow not in expected:
+            continue
+        previous = latest.get(workflow)
+        rank = (run['id'], run.get('run_attempt', 1))
+        if previous is None or rank > (previous['id'], previous.get('run_attempt', 1)):
+            latest[workflow] = run
+    report = []
+    for workflow in sorted(expected):
+        run = latest.get(workflow)
+        report.append({'workflow_id': workflow, 'state': 'missing' if run is None else
+                       (run.get('conclusion') if run.get('status') == 'completed' else run.get('status')),
+                       'run_id': run['id'] if run else None,
+                       'url': run.get('html_url') if run else None})
+    if any(r.get('status') == 'completed' and r.get('conclusion') != 'success' for r in latest.values()):
+        return 'failed', report
+    if len(latest) == len(expected) and all(r.get('status') == 'completed' and r.get('conclusion') == 'success' for r in latest.values()):
+        return 'passed', report
+    return 'pending', report
 
 
-def select_runs(runs: list[dict[str, Any]], sha: str | None) -> list[dict[str, Any]]:
-    if sha:
-        return [run for run in runs if run.get("headSha", "").startswith(sha)]
-    if not runs:
-        return []
-    latest_sha = runs[0].get("headSha")
-    return [run for run in runs if run.get("headSha") == latest_sha]
-
-
-def terminal_state(runs: list[dict[str, Any]]) -> tuple[bool, int]:
-    if not runs:
-        return False, 2
-    conclusions = [run.get("conclusion") for run in runs]
-    statuses = [run.get("status") for run in runs]
-    if any(status != "completed" for status in statuses):
-        return False, 2
-    if any(conclusion in FAILURE_CONCLUSIONS for conclusion in conclusions):
-        return True, 1
-    if all(conclusion in SUCCESS_CONCLUSIONS for conclusion in conclusions):
-        return True, 0
-    return True, 1
-
-
-def main() -> int:
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", help="GitHub repository in owner/name form.")
-    parser.add_argument("--branch", default=None, help="Branch to watch. Defaults to current branch.")
-    parser.add_argument("--head-sha", default=None, help="Head SHA prefix to watch. Defaults to current HEAD.")
-    parser.add_argument("--limit", type=int, default=20)
-    parser.add_argument("--interval", type=int, default=30)
-    parser.add_argument("--timeout", type=int, default=1800)
-    args = parser.parse_args()
+    parser.add_argument('--repo', required=True, help='owner/name')
+    parser.add_argument('--branch', help='Defaults to current local branch')
+    parser.add_argument('--head-sha', help='Full commit SHA; defaults to local HEAD')
+    parser.add_argument('--workflow-id', action='append', type=int, required=True,
+                        help='Required workflow ID; repeat for the complete expected set')
+    parser.add_argument('--event', default='push', help='Expected trigger event; default push')
+    parser.add_argument('--interval', type=float, default=30)
+    parser.add_argument('--timeout', type=float, default=1800)
+    add_auth_options(parser)
+    options = parser.parse_args()
+    try:
+        options.branch = options.branch or git('branch', '--show-current')
+        options.head_sha = options.head_sha or git('rev-parse', 'HEAD')
+        if not re.fullmatch(r'[0-9a-fA-F]{40}|[0-9a-fA-F]{64}', options.head_sha):
+            raise ValueError('a full commit SHA is required')
+        options.head_sha = options.head_sha.lower()
+        if (not options.branch or not all(math.isfinite(v) for v in (options.interval, options.timeout))
+                or min(options.interval, options.timeout, *options.workflow_id) <= 0):
+            raise ValueError('branch, positive workflow IDs, interval and timeout are required')
+        deadline = time.monotonic() + options.timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                print(json.dumps({'status': 'incomplete', 'reason': 'deadline exceeded'}))
+                return 2
+            runs = fetch_runs(options, min(60, remaining))
+            state, workflows = assess(runs, options.head_sha, options.branch, options.event, set(options.workflow_id))
+            print(json.dumps({'status': state, 'head_sha': options.head_sha, 'event': options.event,
+                              'workflows': workflows}), flush=True)
+            if state != 'pending':
+                return 0 if state == 'passed' else 1
+            time.sleep(max(0, min(options.interval, deadline - time.monotonic())))
+    except CliError as exc:
+        print(str(exc), file=sys.stderr)
+        if exc.returncode == 10:
+            print('Stopped leaf argv: ' + json.dumps(exc.command), file=sys.stderr)
+            return 10
+        return 2
+    except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+        print(json.dumps({'status': 'incomplete', 'error': str(exc)}), file=sys.stderr)
+        return 2
 
-    branch = args.branch or current_branch()
-    sha = args.head_sha if args.head_sha is not None else head_sha()
-    deadline = time.monotonic() + args.timeout
 
-    while True:
-        try:
-            selected = select_runs(fetch_runs(branch, args.repo, args.limit), sha)
-        except RuntimeError as exc:
-            print(str(exc), file=sys.stderr)
-            return 1
-
-        if selected:
-            print(summarize(selected), flush=True)
-            done, exit_code = terminal_state(selected)
-            if done:
-                return exit_code
-        else:
-            print(f"No runs found yet for branch={branch} head_sha={sha or '<latest>'}", flush=True)
-
-        if time.monotonic() >= deadline:
-            print("Timed out waiting for GitHub Actions runs.", file=sys.stderr)
-            return 2
-        time.sleep(args.interval)
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__ == '__main__':
+    sys.exit(main())
