@@ -7,11 +7,11 @@ Write the exact authorized task to a prompt file using a file-writing tool or a 
 ```bash
 python "$CODEX_SKILL_DIR/scripts/codex_run.py" \
   --repo "$REPO" --prompt "$PROMPT_FILE" --out "$RUN_DIR" \
-  --sandbox read-only --effort high
+  --sandbox read-only --effort medium
 ```
 
 - Add `--review` for a review or challenge; it requires the structured response in `scripts/review.schema.json`.
-- Add `--model` only for the user's chosen model or the calling skill's configured role. Otherwise the CLI retains its configured model. Review/challenge default to high; consult defaults to medium unless the caller specifies otherwise. Forward explicit supported effort overrides.
+- Add `--model` only for the user's chosen model or the calling skill's configured role. Otherwise the CLI retains its configured model. Review, challenge, and consult all default to medium unless the caller specifies otherwise. Forward explicit supported effort overrides.
 - Add `--resume "$SESSION_ID"` for a contextual follow-up. Use an ID recorded for this task, never `--last`. A resumed reviewer is not a fresh independent reviewer.
 - Use `--sandbox workspace-write` only for an authorized implementation task. Sandbox selection does not grant external-action permission; keep that boundary in the task. Review prompts remain read-only. Configured connectors and host permissions still apply.
 - Set `--timeout` to the task's deadline (default 600 seconds). The host tool timeout must exceed it or use the host's background execution facility.

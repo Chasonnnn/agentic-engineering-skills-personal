@@ -12,7 +12,7 @@ Choose task boundaries, delegate ownership, and integration evidence. Use `codex
 | Role | Default | Responsibility |
 |---|---|---|
 | Orchestrator | Main session | Decide scope, coordinate tracks, validate findings, integrate and report |
-| Codex CLI | `gpt-6-astra`, high effort for every session | Implementation, review of another agent's work, and second opinions |
+| Codex CLI | `gpt-6-astra`, medium effort for every session | Implementation, review of another agent's work, and second opinions |
 | Claude subagent | Opus, high effort | Implementation, research, test authoring, and independent review |
 
 These are installation defaults. Preserve explicit user/project choices and use available capabilities; do not silently substitute an unavailable model. The orchestrator may implement directly when delegation adds no value.

@@ -130,7 +130,7 @@ def main():
     parser.add_argument('--prompt', required=True, help='UTF-8 prompt file, read through stdin')
     parser.add_argument('--out', required=True, help='New directory for this run')
     parser.add_argument('--model', help='Omit to retain the configured Codex model')
-    parser.add_argument('--effort', default='high')
+    parser.add_argument('--effort', default='medium')
     parser.add_argument('--sandbox', choices=('read-only', 'workspace-write'), default='read-only')
     parser.add_argument('--resume', help='Explicit session ID; never selects an unrelated latest session')
     parser.add_argument('--review', action='store_true', help='Require structured review completion and verdict')
