@@ -12,8 +12,10 @@ Choose task boundaries, delegate ownership, and integration evidence. Use `codex
 | Role | Default | Responsibility |
 |---|---|---|
 | Orchestrator | Main session | Decide scope, coordinate tracks, validate findings, integrate and report |
-| Codex CLI | `gpt-6-astra`, `xhigh` effort for every session (`-c 'model_reasoning_effort="xhigh"'`) | Implementation, review of another agent's work, and second opinions |
-| Claude subagent | Opus, high effort | Implementation, research, test authoring, and independent review |
+| Codex CLI | `gpt-6-astra`, `xhigh` effort for every session (`-c 'model_reasoning_effort="xhigh"'`) | Backend implementation, review of another agent's work, and second opinions |
+| Claude subagent | Opus, high effort | Frontend implementation, research, test authoring, and independent review |
+
+Implementation boundary: Codex owns backend work; the Opus subagent owns frontend work. Server-side code counts as backend even when it lives in the frontend app (route handlers, server actions, proxies, auth plumbing). React components and the design surface stay with Opus. Cross-model review follows from this split: Codex-built backend gets an Opus gate, Opus-built frontend gets a Codex gate.
 
 These are installation defaults. Preserve explicit user/project choices and use available capabilities; do not silently substitute an unavailable model. The orchestrator may implement directly when delegation adds no value.
 
