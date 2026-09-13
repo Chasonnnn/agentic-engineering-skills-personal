@@ -20,7 +20,7 @@ Integrate only known task-owned changes. Check the combined behavior and relevan
 
 ## Specifications and research
 
-Use distinct read-only research questions when a fan-out adds value. Synthesize source-backed claims, then verify consequential factual claims against the cited code or primary sources. For major designs, an independent architecture critique can complement factual verification. Preserve unresolved decisions and evidence gaps. Ask the user when a material choice cannot be resolved from existing authorization and context.
+Use distinct read-only research questions when a fan-out adds value. Synthesize source-backed claims, then verify consequential factual claims against the cited code or primary sources. For major designs, run a fact-verifier and an independent architecture critique in parallel; they catch disjoint failures. Cap draft-verify iterations at two, then surface remaining disputes to the user. Preserve unresolved decisions and evidence gaps. Ask the user when a material choice cannot be resolved from existing authorization and context.
 
 ## Live operations
 
@@ -30,4 +30,4 @@ Record per-item identifiers and outcomes, exact relevant errors, and services st
 
 For visible browser QA, use the user's requested browser and supported tooling and preserve the required visible surface. If unavailable, report the unmet QA condition instead of substituting source inspection or a headless run.
 
-If repeated incidents suggest a shared cause, inspect that hypothesis within the authorized scope. Propose a broader audit only when evidence justifies it; two similar symptoms do not automatically authorize a repository-wide rewrite.
+If two incidents share a defect class rather than only a symptom, stop iterating incident by incident: dispatch a read-only class-wide audit within the authorized scope and fix every instance in one gated round. Two similar symptoms alone do not authorize a repository-wide rewrite; confirm the shared class first.

@@ -1,6 +1,11 @@
 ---
 name: orchestrate
-description: Coordinate CLI agents or subagents for implementation and independent review when the user asks for delegation or a multi-agent workflow.
+description: >-
+  Coordinate CLI agents or subagents for implementation and independent review.
+  Use when the user says "orchestrate this", "delegate to codex/opus",
+  "multi-model", "act as orchestrator", or asks for a multi-agent workflow.
+  Use proactively whenever a session delegates substantive implementation to
+  codex exec or subagents while the main session plans, reviews, and integrates.
 ---
 
 # Orchestrate
@@ -22,10 +27,22 @@ These are installation defaults. Preserve explicit user/project choices and use 
 ## Coordination decisions
 
 1. Give each delegate a bounded outcome, owned files or worktree, relevant interfaces, verification criteria, and allowed side effects. Preserve existing dirty work. Freeze shared names and assign one owner to shared integration files when tracks depend on them.
-2. Parallelize independent work when authorized. Isolate concurrent writers; a reviewer must see stable source. Read only the applicable procedure in [references/pipelines.md](references/pipelines.md).
+2. Parallelize independent work. Serialize only on true data dependencies; never idle on one delegate while dispatchable work exists, and advance other tracks while a gate blocks one. Isolate concurrent writers; a reviewer must see stable source. Read only the applicable procedure in [references/pipelines.md](references/pipelines.md).
 3. Keep implementer and reviewer distinct for each reviewed delta, preferably across model families. Small, low-risk changes under roughly 50 lines may receive direct orchestrator review. Production-critical logic and larger logical changes still receive an independent gate.
 4. Validate actionable findings against source before assigning fixes. Review the fix delta and confirm prior findings are resolved. If repeated rounds reveal a design problem, reassess it rather than adding patches indefinitely.
 5. Review the delegate's evidence and spot-check high-risk seams. The independent reviewer reads the full scoped diff; the orchestrator reads it directly in the small-change lane. Verify affected consumers and integration behavior before claiming an end-to-end result. Match tests to the change and project requirements.
 6. Report completed, partial, failed, and unverified work separately. A clean review is one prerequisite, not authorization for publishing or changing live state. Apply existing commit, push, deployment, and memory permissions; this skill grants none.
+
+## Field rules
+
+Each rule comes from an observed failure. Apply them without waiting for a repeat.
+
+- Wrap every long background run on macOS in `caffeinate -s` (or arm `caffeinate -s -w <pid>` on a running one). Machine sleep wedges sockets into permanent hangs and corrupts in-flight test runs. Run a log-growth watchdog over background CLI logs (about 10 minutes without growth while the pid lives); write it in Python, since macOS bash 3.2 lacks associative arrays. Harness-tracked subagents are exempt.
+- Delegated browser live QA runs through codex chrome-control in an interactive session, the only codex work exempt from headless `codex exec`. It must drive a visible browser window; chrome-control can silently run headless, and a headless run does not satisfy a live-QA gate. Instruct the agent to stop rather than fall back.
+- For race, stale-state, or synchronization bugs, decide where the owned truth should live (usually server-side) and change that seam before dispatching any fix. Do not dispatch rounds that patch client-observable symptoms.
+- When two failures share a defect class, stop fixing incidents one at a time. Dispatch one read-only class-wide audit and fix every instance in one gated round.
+- Product and writing rules bind the orchestrator's own artifacts (mockups, docs, decision batches) exactly as they bind delegate output. Self-review against the same checklist before delivering.
+- Fixture bugs in delegate-written tests are assembly work: diagnose and fix directly instead of a round-trip. CI-infra-only fixes (workflow YAML, pins, flags) take the small-change lane; runner flakes get rerun, not reviewed.
+- Know the project's canonical suite invocations. Some suites must run in their own process; mixed collections produce phantom failures.
 
 Use [references/codex-recipes.md](references/codex-recipes.md) for Codex delegation and [references/subagent-recipes.md](references/subagent-recipes.md) for native or Claude agents. Use [references/prompt-templates.md](references/prompt-templates.md) only when constructing a dispatch. Do not load every reference by default.
