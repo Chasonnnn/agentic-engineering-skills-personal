@@ -33,6 +33,7 @@ def review_result(text):
 
 def collect_events(path):
     completed, failed, malformed, thread_id = False, False, False, None
+    error_seen = False
     with path.open(encoding='utf-8', errors='replace') as stream:
         for line in stream:
             if not line.strip():
@@ -44,11 +45,15 @@ def collect_events(path):
                     thread_id = event.get('thread_id')
                 elif kind == 'turn.completed':
                     completed = True
-                elif kind in ('turn.failed', 'error'):
+                elif kind == 'turn.failed':
                     failed = True
+                elif kind == 'error':
+                    # Transient stream notices ("Reconnecting... 2/5") arrive as
+                    # top-level errors; they only mean failure if the turn never completes.
+                    error_seen = True
             except (ValueError, KeyError, TypeError):
                 malformed = True
-    return completed, failed, malformed, thread_id
+    return completed, failed or (error_seen and not completed), malformed, thread_id
 
 
 def run(args):
