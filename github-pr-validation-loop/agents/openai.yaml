@@ -1,4 +1,4 @@
 interface:
   display_name: "GitHub PR Validation Loop"
-  short_description: "Audit PRs, validate fixes, and close noise"
-  default_prompt: "Use $github-pr-validation-loop to audit open pull requests, validate each finding against current main, implement clean fixes when valid, and close duplicates or invalid PRs."
+  short_description: "Fix valid findings, consolidate, and close source PRs"
+  default_prompt: "Use $github-pr-validation-loop to validate the PR queue, close invalid findings directly, fix valid findings in small logical commits, push one consolidated replacement PR, and close the covered source PRs with that link."
