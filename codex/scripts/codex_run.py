@@ -69,8 +69,9 @@ def run(args):
     if args.resume:
         command += ['resume', args.resume]
     command += ['--json', '--output-last-message', str(final),
-                '-c', f'sandbox_mode="{args.sandbox}"',
-                '-c', f'model_reasoning_effort="{args.effort}"']
+                '-c', f'sandbox_mode="{args.sandbox}"']
+    if args.effort:  # Omit to retain the configured Codex effort; a silent default overrode xhigh in the field.
+        command += ['-c', f'model_reasoning_effort="{args.effort}"']
     if args.model:
         command += ['-m', args.model]
     if args.review:
@@ -135,7 +136,7 @@ def main():
     parser.add_argument('--prompt', required=True, help='UTF-8 prompt file, read through stdin')
     parser.add_argument('--out', required=True, help='New directory for this run')
     parser.add_argument('--model', help='Omit to retain the configured Codex model')
-    parser.add_argument('--effort', default='medium')
+    parser.add_argument('--effort', help='Omit to retain the configured Codex reasoning effort')
     parser.add_argument('--sandbox', choices=('read-only', 'workspace-write'), default='read-only')
     parser.add_argument('--resume', help='Explicit session ID; never selects an unrelated latest session')
     parser.add_argument('--review', action='store_true', help='Require structured review completion and verdict')

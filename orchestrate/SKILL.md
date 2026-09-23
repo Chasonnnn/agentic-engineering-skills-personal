@@ -17,8 +17,8 @@ Choose task boundaries, delegate ownership, and integration evidence. Use `codex
 | Role | Default | Responsibility |
 |---|---|---|
 | Orchestrator | Main session | Decide scope, coordinate tracks, validate findings, integrate and report |
-| Codex CLI | `gpt-6-astra`, `xhigh` effort for every session (`-c 'model_reasoning_effort="xhigh"'`) | Backend implementation, review of another agent's work, and second opinions |
-| Claude subagent | Opus 5.5 (`claude-opus-5-5`), high effort; set the model explicitly because the `opus` alias can resolve to an older Opus | Frontend implementation, research, test authoring, and independent review |
+| Codex CLI | `gpt-6-astra`, `xhigh` effort for every session (owner decision 2026-09-10; pass `--effort xhigh` to the runner or leave it unset so `~/.codex/config.toml` applies; never pass medium unless the user asks) | Backend implementation, review of another agent's work, and second opinions |
+| Claude subagent | Opus 5.5 (`claude-opus-5-5`) via the `opus-xhigh` agent type, whose frontmatter pins the model and effort; the Agent tool's `model` field cannot express a full model ID and the `opus` alias can resolve to an older Opus. `opus-max` only when the task earns it | Frontend implementation, research, test authoring, and independent review |
 
 Implementation boundary: Codex owns backend work; the Opus subagent owns frontend work. Mock-ups, HTML pages, decision books and review pages always go to an Opus subagent, even when the orchestrator could write them directly. Server-side code counts as backend even when it lives in the frontend app (route handlers, server actions, proxies, auth plumbing). React components and the design surface stay with Opus. Cross-model review follows from this split: Codex-built backend gets an Opus gate, Opus-built frontend gets a Codex gate.
 
@@ -44,5 +44,16 @@ Each rule comes from an observed failure. Apply them without waiting for a repea
 - Product and writing rules bind the orchestrator's own artifacts (mockups, docs, decision batches) exactly as they bind delegate output. Self-review against the same checklist before delivering.
 - Fixture bugs in delegate-written tests are assembly work: diagnose and fix directly instead of a round-trip. CI-infra-only fixes (workflow YAML, pins, flags) take the small-change lane; runner flakes get rerun, not reviewed.
 - Know the project's canonical suite invocations. Some suites must run in their own process; mixed collections produce phantom failures.
+
+## Research sessions and peer panels
+
+Sessions that orchestrate research (literature fan-outs, experiment audits, label adjudication) follow the same decisions with these additions.
+
+- Keep a dispatch ledger for the session: every delegated item with owner, state (queued, running, blocked, delivered, verified) and artifact path. Answer "what is running and what has not started" from the ledger, and advance every queued item before reporting; a request that was accepted but never dispatched is a failure to report on its own line.
+- Herdr peer panels (another Fable, Astra or Codex session in the same workspace) are collaborators, not delegates. Read a peer's panel before dispatching overlapping work. Changes to experiments, data or services owned by a peer go to that peer as a request; do not edit them from this session. Record what was handed off in the ledger.
+- Codex quota exhaustion is a distinct stall cause. When the CLI reports it, mark affected items blocked, switch the gate to the cross-family fallback (Opus implements, Fable reviews, or the reverse), and resume the recorded Codex sessions when the user says quota is restored instead of redispatching from scratch.
+- Label, score and rubric adjudication uses blind evaluators across model families (one Fable, one Astra, or Opus when a family is unavailable) with identical prompts and no access to each other's output. Compare agreement before treating either result as ground truth.
+- Around a launch or data-collection window, dispatch a read-only Opus log-watcher on a fixed cadence (the user's stated interval, default 5 to 10 minutes) that reports errors and milestones and never restarts services or edits code.
+- Research and audit sessions end in an HTML report built by an Opus subagent unless the user asks for another format. Product and writing rules apply to it.
 
 Use [references/codex-recipes.md](references/codex-recipes.md) for Codex delegation and [references/subagent-recipes.md](references/subagent-recipes.md) for native or Claude agents. Use [references/prompt-templates.md](references/prompt-templates.md) only when constructing a dispatch. Do not load every reference by default.
