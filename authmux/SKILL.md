@@ -16,6 +16,9 @@ the operating system retain credential custody.
    Otherwise do not repeat it.
 3. For `gh`, select the GitHub context under **GitHub CLI** below. For other
    providers, run the requested leaf operation through `authmux exec -- ...`.
+   If the repo declares a separate login context for that provider, select it
+   explicitly with `--context CONTEXT` for the operation; mappings do not
+   automatically route `exec`, `status`, or `doctor`.
    Guarded execution resolves the binding, validates the provider evidence it
    requires, filters ambient credentials, and fails closed.
    Preserve the exact argv until the operation finishes or its single
@@ -33,10 +36,49 @@ authmux exec -- gcloud projects describe PROJECT_ID
 authmux exec --context GITHUB_CONTEXT -- gh pr list
 ```
 
-Use `--context CONTEXT` only outside a bound repository and only when repository
-instructions or the user already identify that context. The one exception is
-`gh` inside a cloud-bound repository, which selects its GitHub context as
-**GitHub CLI** below describes.
+Use `--context CONTEXT` when the repository mapping, repository instructions,
+or user identifies that context, or for GitHub selection below. Never guess a
+context from a shortcut name.
+
+## Repo login shortcuts
+
+For explicit login requests, use the configured repo's shortcut:
+
+| Command | Provider | Repo mapping |
+|---|---|---|
+| `authmux aws` | AWS | `project.providers.aws` |
+| `authmux gh` | GitHub | `project.providers.github` |
+| `authmux gcloud` | GCP | `project.providers.gcp` |
+| `authmux empireai` | SSH | `project.providers.ssh` |
+
+Each accepts `--context CONTEXT` and `--print-command`. Explicit context wins;
+otherwise the matching repo mapping wins, with `project.context` used only
+when that provider has no mapping. An invalid mapping or missing provider is
+an error, not permission to try another context. `empireai` uses the configured
+SSH host alias; it does not select a hardcoded cluster.
+
+Repo configuration keeps the default context and references existing user
+contexts, for example:
+
+```toml
+version = 1
+[project]
+context = "research"
+[project.providers]
+aws = "research"
+github = "github"
+ssh = "empire"
+```
+
+`authmux context show` lists these login mappings. Install a binary that
+supports shortcuts before adding the table; older versions reject it. Do not
+rewrite repo bindings merely to perform a login.
+
+In captured sessions, run only the shortcut with `--print-command`. Have the
+user rerun that command without the flag from the same repo in an external
+terminal, or use `--context` with the resolved context. These shortcuts log in
+only; they never forward provider arguments. Guarded operations still use
+`exec`. Keep the exact event-provided login argv for recovery below.
 
 ## GitHub CLI
 
@@ -44,8 +86,11 @@ GitHub PRs, reviews, checks, Actions, and repository API calls require GitHub
 authentication. An AWS or GCP Project Binding does not make cloud login a
 prerequisite for these operations.
 
-- Use the bound context when it is GitHub-only.
-- Otherwise inspect `authmux context list --json` once. When exactly one
+- If `project.providers.github` is declared, use that GitHub-only context with
+  `--context` before the first operation. A missing or incompatible mapped
+  context stops the operation; do not fall back to discovery.
+- Otherwise use the default bound context when it is GitHub-only.
+- If neither applies, inspect `authmux context list --json` once. When exactly one
   GitHub-only context matches the target host and repository instructions do
   not require another GitHub identity, use it explicitly:
   `authmux exec --context GITHUB_CONTEXT -- gh ...`. Keep the repository
@@ -121,8 +166,9 @@ selector contract and does not manage Git authentication.
 - AWS, Google Cloud, and GitHub use guarded `authmux exec` paths. GitHub accepts
   `gh`, not raw Git authentication.
 - SSH has no generic `exec` path. Before automated SSH work, require
-  `authmux status --context CONTEXT --provider ssh --require-active-transport`;
-  after it passes, use the repository's native SSH host alias. If it fails for
+  `authmux status --context CONTEXT --provider ssh --require-active-transport`,
+  selecting the repo's `project.providers.ssh` context when declared; after it
+  passes, use that context's native SSH host alias. If it fails for
   inactivity, use the external-terminal login handoff above.
 - For unattended deployment or log monitoring that may exceed a human Session,
   use the repository's approved OIDC or workload-identity workflow. Do not keep
