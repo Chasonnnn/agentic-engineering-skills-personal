@@ -43,8 +43,9 @@ test('bars draw on terminal and desktop', async ($, on) => {
     const ui = await $.ui.mount({ plugin: 'progress', surface, component: 'AbovePrompt', props: PROPS })
     expect(await ui.find({ type: 'Text', text: /Own progress mod/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Build 1\/2/ })).toBeDefined()
-    if (surface === 'terminal') expect(await ui.find({ type: 'Text', text: /░/ })).toBeDefined()
-    else expect(await ui.find({ type: 'Svg' })).toBeDefined()
+    if (surface === 'terminal') expect(await ui.find({ type: 'Text', text: /━/ })).toBeDefined()
+    else expect(((await ui.find({ type: 'Svg' })) as { props?: { isInteractive?: boolean } } | undefined)?.props?.isInteractive).toBe(true)
+    expect(await ui.find({ type: 'Text', text: /left/ })).toBeUndefined()
     expect(await ui.find({ key: 'close-mod' })).toBeDefined()
     await ui.unmount()
   }
@@ -106,4 +107,28 @@ test('a name the person set is kept', async ($, on) => {
   await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
   const ran = await $.classic.UserPromptSubmit({ prompt: 'go on', source: 'user', session_title: 'My name' })
   expect(ran.sessionTitle).toBeUndefined()
+})
+
+test('a failed Haiku call is not repeated on later prompts', async ($, on) => {
+  world(on)
+  let calls = 0
+  on('model.complete', async () => {
+    calls += 1
+    return { value: { isAnswered: false, reason: 'api-error', usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } } as never
+  })
+  await $.classic.UserPromptSubmit({ prompt: 'first', source: 'user' })
+  await $.classic.UserPromptSubmit({ prompt: 'second', source: 'user' })
+  expect(calls).toBe(1)
+})
+
+test('a bar the model marked needs_input runs again once the question is answered', async ($, on) => {
+  world(on)
+  on('tool.call', { tool: 'AskUserQuestion' }, async () => ({ result: 'answered' }) as never)
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  await $.tool.call({ tool: TOOL, id: 'mod', state: 'needs_input', note: 'pick DB' } as never)
+  await $.tool.call({ tool: 'AskUserQuestion', questions: [] } as never)
+  const ui = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  expect(await ui.find({ type: 'Text', text: /Needs your input/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /Build 1\/2 · Scaffold/ })).toBeDefined()
+  await ui.unmount()
 })

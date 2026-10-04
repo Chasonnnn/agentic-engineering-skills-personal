@@ -44,7 +44,7 @@ New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-
 
 | Mod | What it does |
 | --- | --- |
-| [progress](mods/progress) | Progress bars above the prompt: the `mcp__progress__track` tool, stage colors, a shimmering active step, elapsed time and ETA, subagent strips, a done line that fades out, a status-line fallback while hidden, and session names taken from the open bar or a one-time Haiku call. Commands: `/bars`, `/bars-clear`, `/bars-demo`. |
+| [progress](mods/progress) | Progress bars above the prompt: the `mcp__progress__track` tool, a hairline bar with stage notches and a moving shine (heavy-rule text bar in the terminal), elapsed time, subagent strips, a done line that fades out, a status-line fallback while hidden, and session names taken from the open bar or a one-time Haiku call. Commands: `/bars`, `/bars-clear`, `/bars-demo`. |
 
 ## Conventions
 

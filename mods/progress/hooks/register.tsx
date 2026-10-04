@@ -7,7 +7,7 @@ const TOOL = 'mcp__progress__track'
 const plans = atom({ plugin: 'progress', key: 'plans' } as const, [])
 const isOpen = atom({ plugin: 'progress', key: 'isOpen' } as const, true)
 const tick = atom({ plugin: 'progress', key: 'tick' } as const, 0)
-const titleState = atom({ plugin: 'progress', key: 'title' } as const, { last: null, isUserOwned: false } as TitleState)
+const titleState = atom({ plugin: 'progress', key: 'title' } as const, { last: null, isUserOwned: false, hasAsked: false } as TitleState)
 
 const MAX_BARS = 3
 const DONE_LINGER_MS = 8000
@@ -18,12 +18,12 @@ const MAX_STRIPS = 4
 const AGENTS = 'agents:auto' // slug() never yields ':', so no model id can take it
 const PX_PER_COL = 8 // desktop reports about 8 CSS px per column
 
-const STAGE_COLORS = ['#8B7CF6', '#3BA7D9', '#2FB59A', '#E0A33A', '#D96BA6', '#5B8DEF', '#8BBF3C']
-const STATE_COLOR: Record<PlanState, string> = { running: '#8B7CF6', needs_input: '#E0A33A', error: '#E5484D', done: '#30A46C' }
+const ACCENT = '#7AA2F7'
+const UNLIT = '#3A3936'
+const STATE_COLOR: Record<PlanState, string> = { running: ACCENT, needs_input: '#E0A33A', error: '#E5484D', done: '#3FB68B' }
 const STATE_GLYPH: Record<PlanState, string> = { running: '●', needs_input: '?', error: '!', done: '✓' }
-const AGENT_COLOR: Record<AgentRun['state'], string> = { running: '#8B7CF6', waiting: '#E0A33A', done: '#30A46C', error: '#E5484D' }
+const AGENT_COLOR: Record<AgentRun['state'], string> = { running: ACCENT, waiting: '#E0A33A', done: '#3FB68B', error: '#E5484D' }
 const STATUSES: StepStatus[] = ['pending', 'active', 'done', 'error', 'skipped']
-const stageColor = (i: number) => STAGE_COLORS[i % STAGE_COLORS.length] ?? '#8B7CF6'
 
 const RULES = `# Progress bars
 Tasks needing more than ~3 edits or commands get a bar via ${TOOL}: create it once with a title and the full breakdown (2-7 stages with short steps, or one stage for a flat list; titles of at most 4 words, in the user's language), then update it with short calls only: {id, next:true} when the active step is finished, or {id, done:[...], active:"..."}, {id, failed:"...", note}. Send state "needs_input" with a note before asking the user to decide. The bar title also becomes the session name, so make it describe the task. Never describe the bars to the user.`
@@ -143,18 +143,20 @@ const scatter = (i: number) => {
 }
 const dissolve = (text: string, f: number) => (f <= 0 ? text : [...text].map((c, i) => (scatter(i) < f ? ' ' : c)).join(''))
 
-// elapsed time, plus an ETA from the average pace of finished steps
-function timing(p: Plan, now: number): string {
-  const elapsed = (p.doneAt ?? now) - p.startedAt
-  const w = where(p)
-  const left = w.total - w.finished
-  if (w.finished === 0 || left === 0 || p.state === 'done') return duration(elapsed)
-  return `${duration(elapsed)} · ~${duration((elapsed / w.finished) * left)} left`
-}
+const elapsed = (p: Plan, now: number) => duration((p.doneAt ?? now) - p.startedAt)
 
 const stageLabel = (p: Plan) => {
   const w = where(p)
   return `${p.stages[w.stage]?.name ?? ''} ${w.step}/${w.stageSize}`
+}
+
+// the words beside the title: where the work is, or what it waits on
+function detail(p: Plan): string {
+  const note = p.note ? ` · ${p.note}` : ''
+  if (p.state === 'needs_input') return `Needs your input${note}`
+  if (p.state === 'error') return `Failed${note}`
+  const active = where(p).activeTitle
+  return `${stageLabel(p)}${active ? ` · ${active}` : ''}`
 }
 
 const isOpenPlan = (p: Plan) => p.id !== AGENTS && p.state !== 'done'
@@ -162,54 +164,40 @@ const isOpenPlan = (p: Plan) => p.id !== AGENTS && p.state !== 'done'
 // ---------- drawing ----------
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c)
-const TRACK_H = 14
-const STEP_GAP = 1.5
-const STAGE_GAP = 5
+const LINE_H = 3
+const NOTCH = 2
 
 // where the lit part ended at the last draw, so a redraw glides from there; equal values keep the svg string stable
 const lastFill = new Map<string, number>()
 
-// segmented track: one rounded cell per step, stages split by wider gaps and tinted in their own colour;
-// the active step shimmers, finished steps light up behind a clip that glides to its new edge
-function trackSvg(p: Plan, W: number): string {
-  const total = p.stages.reduce((n, s) => n + s.steps.length, 0)
-  const gaps = (p.stages.length - 1) * STAGE_GAP + (total - p.stages.length) * STEP_GAP
-  const unit = Math.max(2, (W - gaps) / Math.max(1, total))
-  const isWaiting = p.state === 'needs_input'
-  let x = 0
-  let fillTo = 0
-  let base = ''
-  let lit = ''
-  let live = ''
-  p.stages.forEach((s, i) => {
-    const c = stageColor(i)
-    s.steps.forEach((st, j) => {
-      const r = `x="${x.toFixed(1)}" y="0" width="${unit.toFixed(1)}" height="${TRACK_H}" rx="3"`
-      base += `<rect ${r} fill="#808080" fill-opacity=".16"/>`
-      if (isFinished(st.status)) {
-        lit += `<rect ${r} fill="${c}" fill-opacity="${st.status === 'skipped' ? '.35' : '.92'}"/>`
-        fillTo = x + unit
-      } else if (st.status === 'error') {
-        base += `<rect ${r} fill="${STATE_COLOR.error}"/>`
-      } else if (st.status === 'active') {
-        live += isWaiting
-          ? `<rect ${r} fill="${STATE_COLOR.needs_input}" fill-opacity=".6"><animate attributeName="fill-opacity" values=".25;.75;.25" dur="1.6s" repeatCount="indefinite"/></rect>`
-          : `<rect ${r} fill="${c}" fill-opacity=".38"/><rect ${r} fill="url(#shine)"/>`
-      }
-      x += unit + (j < s.steps.length - 1 ? STEP_GAP : STAGE_GAP)
-    })
-  })
-  const from = lastFill.get(p.id) ?? fillTo
-  lastFill.set(p.id, fillTo)
+// desktop: one hairline, notched where stages meet; the lit part glides to its new edge and a shine runs over it
+function lineSvg(p: Plan, W: number): string {
+  const w = where(p)
+  const total = Math.max(1, w.total)
+  const fx = (w.finished / total) * W
+  const color = STATE_COLOR[p.state]
+  const from = lastFill.get(p.id) ?? fx
+  lastFill.set(p.id, fx)
   const glide =
-    Math.abs(from - fillTo) > 0.5
-      ? `<animate attributeName="width" from="${from.toFixed(1)}" to="${fillTo.toFixed(1)}" dur=".5s" calcMode="spline" keyTimes="0;1" keySplines=".2 .8 .2 1" fill="freeze"/>`
+    Math.abs(from - fx) > 0.5
+      ? `<animate attributeName="width" from="${from.toFixed(1)}" to="${fx.toFixed(1)}" dur=".5s" calcMode="spline" keyTimes="0;1" keySplines=".2 .8 .2 1" fill="freeze"/>`
       : ''
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${TRACK_H}" viewBox="0 0 ${W} ${TRACK_H}">
-<defs><linearGradient id="shine" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/><animateTransform attributeName="gradientTransform" type="translate" from="-1 0" to="1 0" dur="1.8s" repeatCount="indefinite"/></linearGradient>
-<clipPath id="lit"><rect width="${fillTo.toFixed(1)}" height="${TRACK_H}">${glide}</rect></clipPath></defs>
-${base}<g clip-path="url(#lit)">${lit}</g>${live}</svg>`
+  let segs = ''
+  let at = 0
+  p.stages.forEach((s, i) => {
+    const x0 = (at / total) * W + (i > 0 ? NOTCH / 2 : 0)
+    at += s.steps.length
+    const x1 = (at / total) * W - (i < p.stages.length - 1 ? NOTCH / 2 : 0)
+    segs += `<rect x="${x0.toFixed(1)}" width="${Math.max(0, x1 - x0).toFixed(1)}" height="${LINE_H}" rx="1.5"/>`
+  })
+  const shine =
+    p.state === 'running' && fx > 0
+      ? `<rect width="${(W * 0.25).toFixed(1)}" height="${LINE_H}" fill="url(#shine)"><animate attributeName="x" from="${(-W * 0.25).toFixed(1)}" to="${W.toFixed(1)}" dur="2s" repeatCount="indefinite"/></rect>`
+      : ''
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${LINE_H}" viewBox="0 0 ${W} ${LINE_H}">
+<defs><linearGradient id="shine"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<clipPath id="lit"><rect width="${fx.toFixed(1)}" height="${LINE_H}">${glide}</rect></clipPath></defs>
+<g fill="${UNLIT}">${segs}</g><g clip-path="url(#lit)"><g fill="${color}">${segs}</g>${shine}</g></svg>`
 }
 
 // desktop summary line: drawn once per finish, fading and sliding out on its own clock
@@ -222,36 +210,21 @@ function summarySvg(p: Plan, label: string, W: number, now: number): string {
   const dur = FADE_MS / 1000
   const ease = 'calcMode="spline" keyTimes="0;1" keySplines=".4 0 .6 1"'
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="16" viewBox="0 0 ${W} 16">
-<style>.s{font:400 12.5px 'Anthropic Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}</style>
+<style>.s{font:400 12.5px ui-sans-serif,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}</style>
 <g><animate attributeName="opacity" from="1" to="0" begin="${begin}s" dur="${dur}s" ${ease} fill="freeze"/>
 <animateTransform attributeName="transform" type="translate" from="0 0" to="10 0" begin="${begin}s" dur="${dur}s" ${ease} fill="freeze"/>
-<text x="1" y="12" class="s" fill="${STATE_COLOR.done}">✓</text><text x="17" y="12" class="s" fill="#8F8D88">${esc(label)}</text></g></svg>`
+<text x="1" y="12" class="s" fill="${STATE_COLOR.done}">✓</text><text x="17" y="12" class="s" fill="#8A8884">${esc(label)}</text></g></svg>`
   summaryCache.set(key, svg)
   return svg
 }
 
-type Seg = { text: string; color?: string; dim?: boolean }
-
-// the terminal's track: block characters per step, a space between stages; the active step's highlight walks with the tick
-function trackText(p: Plan, cols: number, n: number): Seg[] {
-  const total = p.stages.reduce((k, s) => k + s.steps.length, 0)
-  const cells = Math.max(1, Math.floor((cols - (p.stages.length - 1)) / Math.max(1, total)))
-  const segs: Seg[] = []
-  p.stages.forEach((s, i) => {
-    if (i > 0) segs.push({ text: ' ' })
-    const c = stageColor(i)
-    for (const st of s.steps) {
-      if (st.status === 'done') segs.push({ text: '█'.repeat(cells), color: c })
-      else if (st.status === 'skipped') segs.push({ text: '▒'.repeat(cells), color: c, dim: true })
-      else if (st.status === 'error') segs.push({ text: '█'.repeat(cells), color: STATE_COLOR.error })
-      else if (st.status === 'active') {
-        const hot = n % cells
-        const cl = p.state === 'needs_input' ? STATE_COLOR.needs_input : c
-        segs.push({ text: '▒'.repeat(hot), color: cl }, { text: '▓', color: cl }, { text: '▒'.repeat(cells - hot - 1), color: cl })
-      } else segs.push({ text: '░'.repeat(cells), dim: true })
-    }
-  })
-  return segs
+// terminal: a heavy rule, lit up to a half-cell head
+function lineText(p: Plan, cols: number): { lit: string; rest: string } {
+  const w = where(p)
+  const filled = Math.round((w.finished / Math.max(1, w.total)) * cols)
+  if (filled >= cols) return { lit: '━'.repeat(cols), rest: '' }
+  if (filled === 0) return { lit: '', rest: '━'.repeat(cols) }
+  return { lit: `${'━'.repeat(filled - 1)}╸`, rest: '━'.repeat(cols - filled) }
 }
 
 // strips that show: unfinished first, finished ones fold after a few seconds, failed ones stay
@@ -263,15 +236,23 @@ function visibleAgents(p: Plan, now: number): { shown: AgentRun[]; hidden: numbe
 
 // ---------- engine glue ----------
 
-// adds or replaces one bar by id, keeping at most MAX_BARS and dropping finished ones first;
+// adds or replaces one bar by id; past MAX_BARS the oldest finished bars make room, open ones never do;
 // computed inside update() from the latest list, so parallel writers do not drop each other
 function placeBar(all: readonly Plan[], next: Plan): Plan[] {
   const rest = all.some(p => p.id === next.id) ? all.map(p => (p.id === next.id ? next : p)) : [...all, next]
   while (rest.length > MAX_BARS) {
-    const doneAt = rest.findIndex(p => p.state === 'done')
-    rest.splice(doneAt >= 0 ? doneAt : 0, 1)
+    const doneAt = rest.findIndex(p => p.state === 'done' && p.id !== next.id)
+    if (doneAt < 0) break
+    rest.splice(doneAt, 1)
   }
   return rest
+}
+
+// drops what the module keeps per bar once the bar is gone
+function forget(id: string) {
+  lastFill.delete(id)
+  for (const k of summaryCache.keys()) if (k.startsWith(`${id}:`)) summaryCache.delete(k)
+  for (const [agentId, home] of agentHome) if (home === id) agentHome.delete(agentId)
 }
 
 async function syncStatus($: EngineInterface) {
@@ -282,8 +263,7 @@ async function syncStatus($: EngineInterface) {
 }
 
 async function dropPlan($: EngineInterface, id: string) {
-  lastFill.delete(id)
-  for (const k of summaryCache.keys()) if (k.startsWith(`${id}:`)) summaryCache.delete(k)
+  forget(id)
   await update($, plans, all => all.filter(p => p.id !== id))
   await syncStatus($)
 }
@@ -302,10 +282,14 @@ function lingerThenDrop($: EngineInterface, id: string, doneAt: number) {
 
 async function putPlan($: EngineInterface, next: Plan) {
   let prev: Plan | undefined
+  let evicted: string[] = []
   await update($, plans, all => {
     prev = all.find(p => p.id === next.id)
-    return placeBar(all, next)
+    const placed = placeBar(all, next)
+    evicted = all.filter(p => !placed.some(x => x.id === p.id)).map(p => p.id)
+    return placed
   })
+  evicted.forEach(forget)
   if (next.state === 'done' && prev?.state !== 'done' && next.doneAt !== null) lingerThenDrop($, next.id, next.doneAt)
   if (!prev && next.id !== AGENTS) await update($, isOpen, () => true)
   await syncStatus($)
@@ -342,6 +326,10 @@ const toolUses = new Map<string, string>() // tool_use_id -> agentId, to find wh
 async function editAgent($: EngineInterface, agentId: string, change: (a: AgentRun) => AgentRun) {
   const home = agentHome.get(agentId)
   if (!home) return
+  const before = (await read($, plans)).find(p => p.id === home)?.agents.find(a => a.id === agentId)
+  if (!before) return
+  const after = change(before)
+  if (after.state === before.state && after.tool === before.tool && after.endedAt === before.endedAt) return
   const now = await $.clock.now()
   let finished: Plan | null = null
   await update($, plans, all =>
@@ -370,7 +358,6 @@ export const register: Register = on => {
   // per-turn counts; a reload only restarts them
   let workCalls = 0
   let sinceUpdate = 0
-  let isTouched = false
   let isNudged = false
 
   on('session.start', async ($, e, next) => {
@@ -397,7 +384,7 @@ export const register: Register = on => {
         },
       },
     })
-    // one tick a second while anything moves: clocks, ETA, the terminal shimmer, strips folding
+    // one tick a second while anything moves: clocks, the pulsing glyph, strips folding
     $.clock.every(1000, async () => {
       const all = await read($, plans)
       const isMoving = all.some(p => p.state === 'running' || p.state === 'needs_input' || p.agents.some(a => a.endedAt === null))
@@ -419,7 +406,6 @@ export const register: Register = on => {
   on('turn.start', async ($, e, next) => {
     workCalls = 0
     sinceUpdate = 0
-    isTouched = false
     isNudged = false
     return next(e)
   })
@@ -451,7 +437,8 @@ export const register: Register = on => {
       return result
     }
     let title = (await read($, plans)).filter(isOpenPlan).at(-1)?.title ?? ''
-    if (!title && t.last === null && e.prompt.trim().length > 0) {
+    if (!title && !t.hasAsked && t.last === null && e.prompt.trim().length > 0) {
+      await update($, titleState, s => ({ ...s, hasAsked: true }))
       const named = await $.model.complete({ model: 'haiku', prompt: `${TITLE_PROMPT}${e.prompt.slice(0, 1500)}\n</request>`, maxTokens: 24, effort: 'low', timeoutMs: 4000 })
       if (named.isAnswered) title = str(named.text.replace(/["'`*#.]/g, ''), 60)
     }
@@ -467,7 +454,6 @@ export const register: Register = on => {
     const prev = (await read($, plans)).find(p => p.id === id) ?? null
     const next = normalize(raw, prev, now, id)
     if (next.stages.length === 0) return { deny: `track: no bar "${id}" yet; create it with title and stages.` }
-    isTouched = true
     sinceUpdate = 0
     await putPlan($, next)
     const w = where(next)
@@ -475,12 +461,13 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
-    const live = (await read($, plans)).filter(p => p.state === 'running' && p.id !== AGENTS).at(-1)
-    const mark = (from: PlanState, to: PlanState) =>
-      update($, plans, all => all.map(p => (p.id === live?.id && p.state === from ? { ...p, state: to } : p)))
-    if (live) await mark('running', 'needs_input')
+    const live = (await read($, plans)).filter(p => (p.state === 'running' || p.state === 'needs_input') && p.id !== AGENTS).at(-1)
+    const mark = (from: PlanState, to: PlanState, note?: null) =>
+      update($, plans, all => all.map(p => (p.id === live?.id && p.state === from ? { ...p, state: to, ...(note === null ? { note } : {}) } : p)))
+    if (live?.state === 'running') await mark('running', 'needs_input')
     const ran = await next(e)
-    if (live) await mark('needs_input', 'running')
+    // answered: back to work, the question's note goes with it
+    if (live) await mark('needs_input', 'running', null)
     return ran
   })
 
@@ -501,7 +488,7 @@ export const register: Register = on => {
     if (ran.deny !== undefined || ran.isReadOnly) return ran
     workCalls += 1
     sinceUpdate += 1
-    const hasLive = isTouched || (await read($, plans)).some(isOpenPlan)
+    const hasLive = (await read($, plans)).some(isOpenPlan)
     const note = (text: string) => ({ ...ran, context: [...(ran.context ?? []), text] })
     if (!hasLive && !isNudged && workCalls >= WORK_BEFORE_NUDGE) {
       isNudged = true
@@ -520,11 +507,14 @@ export const register: Register = on => {
     const id = started.agentId
     const now = await $.clock.now()
     const parentHome = e.parentAgentId ? agentHome.get(e.parentAgentId) : undefined
-    const home = parentHome ?? (await read($, plans)).filter(isOpenPlan).at(-1)?.id ?? AGENTS
-    agentHome.set(id, home)
     const run: AgentRun = { id, title: (e.description || e.subagentType || 'Agent').slice(0, 60), state: 'running', tool: 'Starting', startedAt: now, endedAt: null }
+    let home = AGENTS
     let isNew = false
     await update($, plans, all => {
+      // the parent's bar, else the newest open bar, else the mod's own; a bar closed meanwhile is skipped
+      const isLive = (h: string | undefined) => h !== undefined && h !== AGENTS && all.some(p => p.id === h && p.state !== 'done')
+      home = [parentHome, all.filter(isOpenPlan).at(-1)?.id].find(isLive) ?? AGENTS
+      isNew = false
       const host = all.find(p => p.id === home)
       if (host) {
         // a finished agents bar starts a fresh batch
@@ -534,6 +524,7 @@ export const register: Register = on => {
       isNew = true
       return placeBar(all, { id: AGENTS, title: 'Agents', stages: [], state: 'running', note: null, startedAt: now, doneAt: null, agents: [run] })
     })
+    agentHome.set(id, home)
     if (isNew) await update($, isOpen, () => true)
     return started
   })
@@ -562,13 +553,20 @@ export const register: Register = on => {
       agentHome.delete(agentId)
     }
     if (!agentId) {
-      // a plan whose steps are all finished closes itself
-      for (const p of await read($, plans)) {
-        const steps = p.stages.flatMap(s => s.steps)
-        if (isOpenPlan(p) && steps.length > 0 && steps.every(s => isFinished(s.status))) {
-          await putPlan($, { ...p, state: 'done', doneAt: await $.clock.now() })
-        }
-      }
+      // a running plan whose steps are all finished closes itself
+      const now = await $.clock.now()
+      let closed: string[] = []
+      await update($, plans, all => {
+        closed = []
+        return all.map(p => {
+          const steps = p.stages.flatMap(s => s.steps)
+          if (p.id === AGENTS || p.state !== 'running' || steps.length === 0 || !steps.every(s => isFinished(s.status))) return p
+          closed.push(p.id)
+          return { ...p, state: 'done' as const, doneAt: now }
+        })
+      })
+      closed.forEach(id => lingerThenDrop($, id, now))
+      if (closed.length > 0) await syncStatus($)
     }
     return next(e)
   })
@@ -582,7 +580,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'bars-clear' }, async $ => {
-    lastFill.clear()
+    for (const p of await read($, plans)) forget(p.id)
     await update($, plans, () => [])
     await syncStatus($)
     return { text: 'Bars removed.' }
@@ -623,31 +621,42 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const cols = Math.max(40, e.props.bodyColumns || 100)
 
-    // shared column widths so every bar's track starts and ends at the same place
+    const isTerminal = Svg === null
+    const dim = '#8A8884'
+
+    // terminal rows share column widths, so every rule starts and ends at the same place
     const tracked = all.filter(p => p.state !== 'done' && p.id !== AGENTS)
-    const titleCols = Math.min(Math.round(cols * 0.28), Math.max(8, ...all.map(p => p.title.length)))
-    const metaCols = Math.max(0, ...tracked.map(p => stageLabel(p).length + 2 + timing(p, now).length))
-    const trackCols = Math.max(10, cols - titleCols - metaCols - 14)
+    const titleCols = Math.min(Math.round(cols * 0.25), Math.max(8, ...tracked.map(p => p.title.length)))
+    const detailCols = Math.min(Math.round(cols * 0.35), Math.max(8, ...tracked.map(p => detail(p).length)))
+    const timeCols = Math.max(4, ...tracked.map(p => elapsed(p, now).length))
+    const ruleCols = Math.max(8, cols - titleCols - detailCols - timeCols - 16)
 
     const strips = (p: Plan) => {
       const v = visibleAgents(p, now)
-      const rows = v.shown.map(a => {
+      const count = v.shown.length + (v.hidden > 0 ? 1 : 0)
+      const branch = (i: number) => (isTerminal ? (i === count - 1 ? '└ ' : '├ ') : '')
+      const rows = v.shown.map((a, i) => {
         const c = AGENT_COLOR[a.state]
         const dot = a.state === 'running' ? (n % 2 === 0 ? '●' : '○') : a.state === 'done' ? '✓' : a.state === 'error' ? '✕' : '?'
+        const isEnded = a.state === 'done'
         return (
           <Box key={`agent-${a.id}`} flexDirection="row" gap={1} paddingLeft={2}>
+            <Text dimColor>{branch(i)}</Text>
             <Text color={c}>{dot}</Text>
-            <Text wrap="truncate">{a.title}</Text>
-            <Text color={c}>{a.tool}</Text>
+            <Text dimColor={isEnded} wrap="truncate">
+              {a.title}
+            </Text>
+            <Text color={dim}>{isEnded ? 'done' : a.tool}</Text>
             <Box flexGrow={1} />
-            <Text dimColor>{duration((a.endedAt ?? now) - a.startedAt)}</Text>
+            <Text color={dim}>{duration((a.endedAt ?? now) - a.startedAt)}</Text>
           </Box>
         )
       })
       if (v.hidden > 0) {
         rows.push(
-          <Box key={`agents-more-${p.id}`} paddingLeft={2}>
-            <Text dimColor>+{v.hidden} more</Text>
+          <Box key={`agents-more-${p.id}`} flexDirection="row" gap={1} paddingLeft={2}>
+            <Text dimColor>{branch(count - 1)}</Text>
+            <Text color={dim}>{`+${v.hidden} more`}</Text>
           </Box>,
         )
       }
@@ -659,19 +668,19 @@ export const register: Register = on => {
       if (p.state === 'done') {
         const steps = p.id === AGENTS ? p.agents.length : where(p).total
         const unit = p.id === AGENTS ? 'agent' : 'step'
-        const label = `${p.title} · ${steps} ${unit}${steps === 1 ? '' : 's'} · ${duration((p.doneAt ?? now) - p.startedAt)}`
+        const label = `${p.title} · ${steps} ${unit}${steps === 1 ? '' : 's'} · ${elapsed(p, now)}`
         const f = fadeOf(p, now)
         const W = (cols - 4) * PX_PER_COL
         return [
           <Box key={`bar-${p.id}`} flexDirection="row" gap={1}>
             {Svg ? (
-              <Svg source={summarySvg(p, label, W, now)} alt={`✓ ${label}`} width={W} height={16} />
+              <Svg source={summarySvg(p, label, W, now)} alt={`✓ ${label}`} width={W} height={16} isInteractive />
             ) : (
               <Text wrap="truncate">
                 <Text color={STATE_COLOR.done} dimColor={f > 0.5}>
                   {dissolve('✓', f)}
                 </Text>
-                <Text dimColor>{` ${dissolve(label, f)}`}</Text>
+                <Text color={dim}>{` ${dissolve(label, f)}`}</Text>
               </Text>
             )}
             <Box flexGrow={1} />
@@ -684,59 +693,75 @@ export const register: Register = on => {
         return [
           <Box key={`bar-${p.id}`} flexDirection="row" gap={1}>
             <Text color={STATE_COLOR[p.state]}>{STATE_GLYPH[p.state]}</Text>
-            <Text>Agents</Text>
-            <Text dimColor>{`${ended}/${p.agents.length}`}</Text>
+            <Text bold>Agents</Text>
+            <Text color={dim}>{`${ended}/${p.agents.length} done`}</Text>
             <Box flexGrow={1} />
             {close}
           </Box>,
           ...strips(p),
         ]
       }
-      const w = where(p)
       const pct = percent(p)
       const color = STATE_COLOR[p.state]
       const glyph = p.state === 'running' && n % 2 === 1 ? '○' : STATE_GLYPH[p.state]
-      const alt = `${p.title}: ${stageLabel(p)}, ${pct}%${p.note ? ` — ${p.note}` : ''}`
-      const track = Svg ? (
-        <Svg source={trackSvg(p, trackCols * PX_PER_COL)} alt={alt} width={trackCols * PX_PER_COL} height={TRACK_H} />
-      ) : (
-        <Text>
-          {trackText(p, trackCols, n).map(s => (
-            <Text color={s.color} dimColor={s.dim}>
-              {s.text}
+      const words = detail(p)
+      const wordsColor = p.state === 'running' ? dim : color
+      const pctText = `${String(pct).padStart(3, ' ')}%`
+
+      if (isTerminal) {
+        const rule = lineText(p, ruleCols)
+        return [
+          <Box key={`bar-${p.id}`} flexDirection="row" gap={1}>
+            <Text color={color}>{glyph}</Text>
+            <Box width={titleCols} flexShrink={0}>
+              <Text bold wrap="truncate">
+                {p.title}
+              </Text>
+            </Box>
+            <Text>
+              <Text color={color}>{rule.lit}</Text>
+              <Text color={UNLIT}>{rule.rest}</Text>
             </Text>
-          ))}
-        </Text>
-      )
-      const rows = [
-        <Box key={`bar-${p.id}`} flexDirection="row" alignItems="center" gap={1}>
-          <Text color={color}>{glyph}</Text>
-          <Box width={titleCols} flexShrink={0}>
-            <Text wrap="truncate">{p.title}</Text>
-          </Box>
-          {track}
-          <Box width={metaCols} flexShrink={0}>
-            <Text color={p.state === 'running' ? stageColor(w.stage) : color} wrap="truncate">
-              {stageLabel(p)}
-            </Text>
-            <Text dimColor wrap="truncate">{`  ${timing(p, now)}`}</Text>
-          </Box>
-          <Text dimColor>{`${String(pct).padStart(3, ' ')}%`}</Text>
-          {close}
-        </Box>,
-      ]
-      if (p.note && p.state !== 'running') {
-        rows.push(
-          <Box key={`note-${p.id}`} paddingLeft={2}>
-            <Text color={color}>{`↳ ${p.note}`}</Text>
+            <Box width={detailCols} flexShrink={0}>
+              <Text color={wordsColor} wrap="truncate">
+                {words}
+              </Text>
+            </Box>
+            <Box width={timeCols} flexShrink={0}>
+              <Text color={dim}>{elapsed(p, now)}</Text>
+            </Box>
+            <Text color={dim}>{pctText}</Text>
+            {close}
           </Box>,
-        )
+          ...strips(p),
+        ]
       }
-      return [...rows, ...strips(p)]
+
+      const W = (cols - 2) * PX_PER_COL
+      const alt = `${p.title}: ${words}, ${pct}%`
+      return [
+        <Box key={`bar-${p.id}`} flexDirection="column" gap={1}>
+          <Box flexDirection="row" alignItems="center" gap={1}>
+            <Text color={color}>{glyph}</Text>
+            <Text bold wrap="truncate">
+              {p.title}
+            </Text>
+            <Text color={wordsColor} wrap="truncate">
+              {words}
+            </Text>
+            <Box flexGrow={1} />
+            <Text color={dim}>{elapsed(p, now)}</Text>
+            <Text>{pctText}</Text>
+            {close}
+          </Box>
+          <Svg source={lineSvg(p, W)} alt={alt} width={W} height={LINE_H} isInteractive />
+        </Box>,
+        ...strips(p),
+      ]
     }
 
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" gap={1}>
         {all.flatMap(bar)}
       </Box>
     )

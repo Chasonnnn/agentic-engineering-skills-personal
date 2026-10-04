@@ -20,7 +20,7 @@ export type Plan = {
   doneAt: number | null
   agents: AgentRun[]
 }
-export type TitleState = { last: string | null; isUserOwned: boolean }
+export type TitleState = { last: string | null; isUserOwned: boolean; hasAsked: boolean }
 
 declare module 'claude-code' {
   interface PluginState {
