@@ -18,6 +18,12 @@ ln -s ~/agentic-engineering-skills-personal/orchestrate ~/.claude/skills/orchest
 ln -s ~/agentic-engineering-skills-personal/review-and-remediate-server-logs ~/.claude/skills/review-and-remediate-server-logs
 ```
 
+Mods (Claude Code function-hook plugins) load from `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`:
+
+```json
+"CLAUDE_CODE_PLUGIN_DIRS": "~/agentic-engineering-skills-personal/mods/progress"
+```
+
 New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-personal pull` (symlinks pick up changes automatically).
 
 ## Skills
@@ -34,9 +40,15 @@ New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-
 | [orchestrate](orchestrate/SKILL.md) | Coordinates delegates, independent review, and integration; shares CLI execution with `codex`. (Folded in from `orchestrate-skill` with history; that repo is archived.) |
 | [review-and-remediate-server-logs](review-and-remediate-server-logs/SKILL.md) | Review live server logs, prioritize actionable failures, reproduce and fix their causes, validate through CI, and verify the result after an authorized deployment. |
 
+## Mods
+
+| Mod | What it does |
+| --- | --- |
+| [progress](mods/progress) | Progress bars above the prompt: the `mcp__progress__track` tool, stage colors, a shimmering active step, elapsed time and ETA, subagent strips, a done line that fades out, a status-line fallback while hidden, and session names taken from the open bar or a one-time Haiku call. Commands: `/bars`, `/bars-clear`, `/bars-demo`. |
+
 ## Conventions
 
-- One directory per skill, `SKILL.md` inside, frontmatter per Claude Code skill format.
+- One directory per skill, `SKILL.md` inside, frontmatter per Claude Code skill format. Mods live under `mods/`, one plugin folder each.
 - Skills here are project-agnostic: per-project facts (repo, board number, doc paths) are inputs, never hardcoded.
 - Preserve each skill's invocation policy. Keep discovery concise, load conditional detail through references, and retain exact procedures where correctness requires them.
 
@@ -49,6 +61,7 @@ New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-
 Use the approved project/host Python runtime. Helpers use the standard library.
 
 ```sh
+claude plugin validate mods/progress && claude plugin test mods/progress
 python -m unittest discover -s codex/tests -v
 python -m unittest discover -s github-pr-validation-loop/tests -v
 ```
