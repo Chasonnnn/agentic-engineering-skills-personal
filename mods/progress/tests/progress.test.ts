@@ -51,34 +51,87 @@ test('bars draw on terminal and desktop', async ($, on) => {
   }
 })
 
-test('a finished bar shows a summary line, then leaves', async ($, on) => {
+const TURN_END = { answer: '', durationMs: 0, isAborted: false, turnId: 't1', reason: 'answer' } as never
+// the engine's end of a turn, and a session namer that declines
+const turns = (on: On) => on('turn.complete', async () => ({ text: '' }))
+const namer = (on: On) =>
+  on('model.complete', async () => ({ value: { isAnswered: false, reason: 'api-error', usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } }) as never)
+
+test('a finished bar holds full and green until the next prompt, then leaves', async ($, on) => {
   const clock = world(on)
+  namer(on)
   await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
   await clock.advance(90_000)
   await $.tool.call({ tool: TOOL, id: 'mod', state: 'done' } as never)
+  await clock.advance(600_000)
   const ui = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
-  expect(await ui.find({ type: 'Text', text: /Own progress mod · 3 steps · 1m30s/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Completed · 3 steps/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^✓$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^1m30s$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /100%/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /╸/ })).toBeUndefined()
+  expect(await ui.find({ key: 'close-mod' })).toBeDefined()
   await ui.unmount()
-  await clock.advance(9_000)
+  await $.classic.UserPromptSubmit({ prompt: 'next task', source: 'user' })
+  await clock.advance(1_600)
   const after = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
   expect(await after.find({ type: 'Text', text: /Own progress mod/ })).toBeUndefined()
   await after.unmount()
 })
 
-test('a finished bar fades: svg animation on desktop, dissolving text on the terminal', async ($, on) => {
+test('a done bar fades on the next prompt: svg opacity on desktop, dissolving text on the terminal', async ($, on) => {
   const clock = world(on)
+  namer(on)
   await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
   await $.tool.call({ tool: TOOL, id: 'mod', state: 'done' } as never)
+  const held = await $.ui.mount({ plugin: 'progress', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  expect(((await held.find({ type: 'Svg' })) as { props?: { source?: string } } | undefined)?.props?.source).not.toContain('attributeName="opacity"')
+  await held.unmount()
+  await $.classic.UserPromptSubmit({ prompt: 'next task', source: 'user' })
   const desk = await $.ui.mount({ plugin: 'progress', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
-  const svg = (await desk.find({ type: 'Svg' })) as { props?: { source?: string } } | undefined
-  expect(svg?.props?.source).toContain('attributeName="opacity" from="1" to="0" begin="6.5s"')
+  expect(((await desk.find({ type: 'Svg' })) as { props?: { source?: string } } | undefined)?.props?.source).toContain('attributeName="opacity" from="1" to="0"')
   await desk.unmount()
-  await clock.advance(7_400)
+  await clock.advance(900)
   const term = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
-  expect(await term.find({ type: 'Text', text: /Own progress mod · 3 steps/ })).toBeUndefined()
+  expect(await term.find({ type: 'Text', text: /Completed · 3 steps/ })).toBeUndefined()
   expect(await term.find({ type: 'Text', text: /\S/ })).toBeDefined()
   expect(await term.find({ key: 'close-mod' })).toBeUndefined()
   await term.unmount()
+})
+
+test('a turn that ends with steps open pauses the bar until the next update', async ($, on) => {
+  const clock = world(on)
+  turns(on)
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  await clock.advance(30_000)
+  await $.turn.complete(TURN_END)
+  await clock.advance(60_000)
+  for (const ms of [0, 1_000]) {
+    await clock.advance(ms)
+    const ui = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+    expect(await ui.find({ type: 'Text', text: /Paused · Build 1\/2 · Scaffold/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^30s$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^○$/ })).toBeUndefined()
+    await ui.unmount()
+  }
+  const moved = await $.tool.call({ tool: TOOL, id: 'mod', next: true } as never)
+  expect(moved.result).toBe('mod: 1/3, running, active "Bars"')
+  await clock.advance(10_000)
+  const ui = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  expect(await ui.find({ type: 'Text', text: /^40s$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Paused/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a turn that ends with every step finished completes the bar', async ($, on) => {
+  world(on)
+  turns(on)
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  await $.tool.call({ tool: TOOL, id: 'mod', state: 'running', done: ['Scaffold', 'Bars', 'Tests'] } as never)
+  await $.turn.complete(TURN_END)
+  const ui = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  expect(await ui.find({ type: 'Text', text: /Completed · 3 steps/ })).toBeDefined()
+  await ui.unmount()
 })
 
 test('the session takes the open bar title', async ($, on) => {

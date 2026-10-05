@@ -10,8 +10,7 @@ const tick = atom({ plugin: 'progress', key: 'tick' } as const, 0)
 const titleState = atom({ plugin: 'progress', key: 'title' } as const, { last: null, isUserOwned: false, hasAsked: false } as TitleState)
 
 const MAX_BARS = 3
-const DONE_LINGER_MS = 8000
-const FADE_MS = 1500 // the last part of the linger, spent fading out
+const FADE_MS = 1500 // a finished bar fades out over this long once the next prompt is sent
 const FADE_FRAMES = 10
 const STRIP_LINGER_MS = 5000
 const MAX_STRIPS = 4
@@ -20,13 +19,14 @@ const PX_PER_COL = 8 // desktop reports about 8 CSS px per column
 
 const ACCENT = '#7AA2F7'
 const UNLIT = '#3A3936'
-const STATE_COLOR: Record<PlanState, string> = { running: ACCENT, needs_input: '#E0A33A', error: '#E5484D', done: '#3FB68B' }
-const STATE_GLYPH: Record<PlanState, string> = { running: '●', needs_input: '?', error: '!', done: '✓' }
+const DIM = '#8A8884'
+const STATE_COLOR: Record<PlanState, string> = { running: ACCENT, needs_input: '#E0A33A', paused: DIM, error: '#E5484D', done: '#3FB68B' }
+const STATE_GLYPH: Record<PlanState, string> = { running: '●', needs_input: '?', paused: '●', error: '!', done: '✓' }
 const AGENT_COLOR: Record<AgentRun['state'], string> = { running: ACCENT, waiting: '#E0A33A', done: '#3FB68B', error: '#E5484D' }
 const STATUSES: StepStatus[] = ['pending', 'active', 'done', 'error', 'skipped']
 
 const RULES = `# Progress bars
-Tasks needing more than ~3 edits or commands get a bar via ${TOOL}: create it once with a title and the full breakdown (2-7 stages with short steps, or one stage for a flat list; titles of at most 4 words, in the user's language), then update it with short calls only: {id, next:true} when the active step is finished, or {id, done:[...], active:"..."}, {id, failed:"...", note}. Send state "needs_input" with a note before asking the user to decide. The bar title also becomes the session name, so make it describe the task. Never describe the bars to the user.`
+Tasks needing more than ~3 edits or commands get a bar via ${TOOL}: create it once with a title and the full breakdown (2-7 stages with short steps, or one stage for a flat list; titles of at most 4 words, in the user's language), then update it with short calls only: {id, next:true} when the active step is finished, or {id, done:[...], active:"..."}, {id, failed:"...", note}. Send state "needs_input" with a note before asking the user to decide. When the work is finished, close the bar with {id, state:"done"} before the final reply. The bar title also becomes the session name, so make it describe the task. Never describe the bars to the user.`
 
 type Raw = Record<string, unknown>
 const str = (v: unknown, max = 120) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '')
@@ -94,6 +94,9 @@ function normalize(input: Raw, prev: Plan | null, now: number, id: string): Plan
   const isAllDone = steps.length > 0 && steps.every(s => isFinished(s.status))
   const asked = input.state as PlanState
   const state: PlanState = STATE_GLYPH[asked] ? asked : isAllDone ? 'done' : typeof input.failed === 'string' ? 'error' : 'running'
+  // any update ends a pause; the paused time stays out of the clock
+  const pausedAt = prev?.state === 'paused' ? (prev.pausedAt ?? null) : null
+  const pausedMs = (prev?.pausedMs ?? 0) + (pausedAt !== null && state !== 'paused' ? now - pausedAt : 0)
 
   return {
     id,
@@ -103,6 +106,9 @@ function normalize(input: Raw, prev: Plan | null, now: number, id: string): Plan
     note: str(input.note, 160) || null,
     startedAt: prev?.startedAt ?? now,
     doneAt: state === 'done' ? (prev?.doneAt ?? now) : null,
+    pausedAt: state === 'paused' ? (pausedAt ?? now) : null,
+    pausedMs,
+    fadeAt: null,
     agents: prev?.agents ?? [],
   }
 }
@@ -119,10 +125,13 @@ function where(p: Plan): Where {
   return { finished, total: flat.length, stage, step: cur ? cur.j + 1 : stageSize, stageSize, activeTitle: cur?.step.title ?? null }
 }
 
-const percent = (p: Plan) => {
+// lit share of the rule; a done bar is full even if the model closed it with steps open
+const fraction = (p: Plan) => {
   const w = where(p)
-  return p.state === 'done' ? 100 : Math.round((w.finished / Math.max(1, w.total)) * 100)
+  return p.state === 'done' ? 1 : w.finished / Math.max(1, w.total)
 }
+
+const percent = (p: Plan) => Math.round(fraction(p) * 100)
 
 const duration = (ms: number) => {
   const sec = Math.max(0, Math.round(ms / 1000))
@@ -133,8 +142,7 @@ const duration = (ms: number) => {
 }
 
 // 0 until the fade starts, 1 when the bar leaves
-const fadeOf = (p: Plan, now: number) =>
-  p.doneAt === null ? 0 : Math.min(1, Math.max(0, (now - p.doneAt - (DONE_LINGER_MS - FADE_MS)) / FADE_MS))
+const fadeOf = (p: Plan, now: number) => (p.fadeAt ? Math.min(1, Math.max(0, (now - p.fadeAt) / FADE_MS)) : 0)
 
 // terminal fade: characters drop out in a scattered order as f goes 0 -> 1
 const scatter = (i: number) => {
@@ -143,7 +151,8 @@ const scatter = (i: number) => {
 }
 const dissolve = (text: string, f: number) => (f <= 0 ? text : [...text].map((c, i) => (scatter(i) < f ? ' ' : c)).join(''))
 
-const elapsed = (p: Plan, now: number) => duration((p.doneAt ?? now) - p.startedAt)
+// the clock stops while a bar is paused or done
+const elapsed = (p: Plan, now: number) => duration((p.doneAt ?? p.pausedAt ?? now) - p.startedAt - (p.pausedMs ?? 0))
 
 const stageLabel = (p: Plan) => {
   const w = where(p)
@@ -155,26 +164,30 @@ function detail(p: Plan): string {
   const note = p.note ? ` · ${p.note}` : ''
   if (p.state === 'needs_input') return `Needs your input${note}`
   if (p.state === 'error') return `Failed${note}`
+  if (p.state === 'done') {
+    const total = where(p).total
+    return `Completed · ${total} step${total === 1 ? '' : 's'}`
+  }
   const active = where(p).activeTitle
-  return `${stageLabel(p)}${active ? ` · ${active}` : ''}`
+  return `${p.state === 'paused' ? 'Paused · ' : ''}${stageLabel(p)}${active ? ` · ${active}` : ''}`
 }
 
 const isOpenPlan = (p: Plan) => p.id !== AGENTS && p.state !== 'done'
 
 // ---------- drawing ----------
 
-const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c)
 const LINE_H = 3
 const NOTCH = 2
 
 // where the lit part ended at the last draw, so a redraw glides from there; equal values keep the svg string stable
 const lastFill = new Map<string, number>()
 
-// desktop: one hairline, notched where stages meet; the lit part glides to its new edge and a shine runs over it
-function lineSvg(p: Plan, W: number): string {
+// desktop: one hairline, notched where stages meet; the lit part glides to its new edge and a shine runs over it;
+// a fading bar animates its own opacity, and the string stays the same each frame so the animation runs once
+function lineSvg(p: Plan, W: number, isFading: boolean): string {
   const w = where(p)
   const total = Math.max(1, w.total)
-  const fx = (w.finished / total) * W
+  const fx = fraction(p) * W
   const color = STATE_COLOR[p.state]
   const from = lastFill.get(p.id) ?? fx
   lastFill.set(p.id, fx)
@@ -194,34 +207,18 @@ function lineSvg(p: Plan, W: number): string {
     p.state === 'running' && fx > 0
       ? `<rect width="${(W * 0.25).toFixed(1)}" height="${LINE_H}" fill="url(#shine)"><animate attributeName="x" from="${(-W * 0.25).toFixed(1)}" to="${W.toFixed(1)}" dur="2s" repeatCount="indefinite"/></rect>`
       : ''
+  const fade = isFading
+    ? `<animate attributeName="opacity" from="1" to="0" dur="${FADE_MS / 1000}s" calcMode="spline" keyTimes="0;1" keySplines=".4 0 .6 1" fill="freeze"/>`
+    : ''
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${LINE_H}" viewBox="0 0 ${W} ${LINE_H}">
 <defs><linearGradient id="shine"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
 <clipPath id="lit"><rect width="${fx.toFixed(1)}" height="${LINE_H}">${glide}</rect></clipPath></defs>
-<g fill="${UNLIT}">${segs}</g><g clip-path="url(#lit)"><g fill="${color}">${segs}</g>${shine}</g></svg>`
-}
-
-// desktop summary line: drawn once per finish, fading and sliding out on its own clock
-const summaryCache = new Map<string, string>()
-function summarySvg(p: Plan, label: string, W: number, now: number): string {
-  const key = `${p.id}:${p.doneAt}:${W}`
-  const hit = summaryCache.get(key)
-  if (hit) return hit
-  const begin = Math.max(0, DONE_LINGER_MS - FADE_MS - (now - (p.doneAt ?? now))) / 1000
-  const dur = FADE_MS / 1000
-  const ease = 'calcMode="spline" keyTimes="0;1" keySplines=".4 0 .6 1"'
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="16" viewBox="0 0 ${W} 16">
-<style>.s{font:400 12.5px ui-sans-serif,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}</style>
-<g><animate attributeName="opacity" from="1" to="0" begin="${begin}s" dur="${dur}s" ${ease} fill="freeze"/>
-<animateTransform attributeName="transform" type="translate" from="0 0" to="10 0" begin="${begin}s" dur="${dur}s" ${ease} fill="freeze"/>
-<text x="1" y="12" class="s" fill="${STATE_COLOR.done}">✓</text><text x="17" y="12" class="s" fill="#8A8884">${esc(label)}</text></g></svg>`
-  summaryCache.set(key, svg)
-  return svg
+<g>${fade}<g fill="${UNLIT}">${segs}</g><g clip-path="url(#lit)"><g fill="${color}">${segs}</g>${shine}</g></g></svg>`
 }
 
 // terminal: a heavy rule, lit up to a half-cell head
 function lineText(p: Plan, cols: number): { lit: string; rest: string } {
-  const w = where(p)
-  const filled = Math.round((w.finished / Math.max(1, w.total)) * cols)
+  const filled = Math.round(fraction(p) * cols)
   if (filled >= cols) return { lit: '━'.repeat(cols), rest: '' }
   if (filled === 0) return { lit: '', rest: '━'.repeat(cols) }
   return { lit: `${'━'.repeat(filled - 1)}╸`, rest: '━'.repeat(cols - filled) }
@@ -251,7 +248,6 @@ function placeBar(all: readonly Plan[], next: Plan): Plan[] {
 // drops what the module keeps per bar once the bar is gone
 function forget(id: string) {
   lastFill.delete(id)
-  for (const k of summaryCache.keys()) if (k.startsWith(`${id}:`)) summaryCache.delete(k)
   for (const [agentId, home] of agentHome) if (home === id) agentHome.delete(agentId)
 }
 
@@ -268,15 +264,29 @@ async function dropPlan($: EngineInterface, id: string) {
   await syncStatus($)
 }
 
-// a bar that turns done collapses to a summary line, then leaves
-function lingerThenDrop($: EngineInterface, id: string, doneAt: number) {
+// a done bar holds until the next prompt; then every done bar fades out and leaves
+async function fadeDoneBars($: EngineInterface) {
+  const now = await $.clock.now()
+  let fading: string[] = []
+  await update($, plans, all => {
+    fading = []
+    return all.map(p => {
+      if (p.state !== 'done' || p.fadeAt) return p
+      fading.push(p.id)
+      return { ...p, fadeAt: now }
+    })
+  })
+  if (fading.length === 0) return
   // the terminal has no opacity: redraw a few frames while the fade runs
   for (let k = 1; k < FADE_FRAMES; k++) {
-    $.clock.after(DONE_LINGER_MS - FADE_MS + (k * FADE_MS) / FADE_FRAMES, () => update($, tick, n => n + 1))
+    $.clock.after((k * FADE_MS) / FADE_FRAMES, () => update($, tick, n => n + 1))
   }
-  $.clock.after(DONE_LINGER_MS, async () => {
-    const p = (await read($, plans)).find(x => x.id === id)
-    if (p?.state === 'done' && p.doneAt === doneAt) await dropPlan($, id)
+  $.clock.after(FADE_MS, async () => {
+    // a bar reopened during the fade has lost its fadeAt and stays
+    const gone = (await read($, plans)).filter(p => fading.includes(p.id) && p.state === 'done' && p.fadeAt === now)
+    for (const p of gone) forget(p.id)
+    if (gone.length > 0) await update($, plans, all => all.filter(p => !gone.some(g => g.id === p.id)))
+    await syncStatus($)
   })
 }
 
@@ -290,7 +300,6 @@ async function putPlan($: EngineInterface, next: Plan) {
     return placed
   })
   evicted.forEach(forget)
-  if (next.state === 'done' && prev?.state !== 'done' && next.doneAt !== null) lingerThenDrop($, next.id, next.doneAt)
   if (!prev && next.id !== AGENTS) await update($, isOpen, () => true)
   await syncStatus($)
 }
@@ -331,7 +340,6 @@ async function editAgent($: EngineInterface, agentId: string, change: (a: AgentR
   const after = change(before)
   if (after.state === before.state && after.tool === before.tool && after.endedAt === before.endedAt) return
   const now = await $.clock.now()
-  let finished: Plan | null = null
   await update($, plans, all =>
     all.map(p => {
       if (p.id !== home) return p
@@ -339,13 +347,9 @@ async function editAgent($: EngineInterface, agentId: string, change: (a: AgentR
       if (p.id !== AGENTS) return { ...p, agents }
       // the mod's own bar is done once every agent on it has ended
       const isOver = agents.every(a => a.state === 'done' || a.state === 'error')
-      const next: Plan = { ...p, agents, state: isOver ? (agents.some(a => a.state === 'error') ? 'error' : 'done') : 'running', doneAt: isOver ? now : null }
-      if (next.state === 'done') finished = next
-      return next
+      return { ...p, agents, state: isOver ? (agents.some(a => a.state === 'error') ? 'error' : 'done') : 'running', doneAt: isOver ? now : null }
     }),
   )
-  const done = finished as Plan | null
-  if (done?.doneAt) lingerThenDrop($, done.id, done.doneAt)
 }
 
 const STEP_SCHEMA = { type: 'object', required: ['title', 'status'], properties: { title: { type: 'string' }, status: { enum: STATUSES } } }
@@ -426,8 +430,11 @@ export const register: Register = on => {
   // session name: the newest open bar's title, else a short Haiku name for the first prompt;
   // a name the person set themselves is never replaced
   on('classic.UserPromptSubmit', async ($, e, next) => {
+    const isPerson = e.source === undefined || e.source === 'user'
+    // the person's next prompt fades the done bars
+    if (isPerson) await fadeDoneBars($)
     const result = await next(e)
-    if (result.sessionTitle || (e.source !== undefined && e.source !== 'user')) return result
+    if (result.sessionTitle || !isPerson) return result
     const t = await read($, titleState)
     if (t.isUserOwned) return result
     const current = e.session_title?.trim()
@@ -553,20 +560,19 @@ export const register: Register = on => {
       agentHome.delete(agentId)
     }
     if (!agentId) {
-      // a running plan whose steps are all finished closes itself
+      // the main turn ended: a running plan whose steps are all finished closes itself, any other pauses
       const now = await $.clock.now()
-      let closed: string[] = []
+      let isChanged = false
       await update($, plans, all => {
-        closed = []
+        isChanged = false
         return all.map(p => {
           const steps = p.stages.flatMap(s => s.steps)
-          if (p.id === AGENTS || p.state !== 'running' || steps.length === 0 || !steps.every(s => isFinished(s.status))) return p
-          closed.push(p.id)
-          return { ...p, state: 'done' as const, doneAt: now }
+          if (p.id === AGENTS || p.state !== 'running' || steps.length === 0) return p
+          isChanged = true
+          return steps.every(s => isFinished(s.status)) ? { ...p, state: 'done' as const, doneAt: now } : { ...p, state: 'paused' as const, pausedAt: now }
         })
       })
-      closed.forEach(id => lingerThenDrop($, id, now))
-      if (closed.length > 0) await syncStatus($)
+      if (isChanged) await syncStatus($)
     }
     return next(e)
   })
@@ -622,10 +628,10 @@ export const register: Register = on => {
     const cols = Math.max(40, e.props.bodyColumns || 100)
 
     const isTerminal = Svg === null
-    const dim = '#8A8884'
+    const dim = DIM
 
     // terminal rows share column widths, so every rule starts and ends at the same place
-    const tracked = all.filter(p => p.state !== 'done' && p.id !== AGENTS)
+    const tracked = all.filter(p => p.id !== AGENTS)
     const titleCols = Math.min(Math.round(cols * 0.25), Math.max(8, ...tracked.map(p => p.title.length)))
     const detailCols = Math.min(Math.round(cols * 0.35), Math.max(8, ...tracked.map(p => detail(p).length)))
     const timeCols = Math.max(4, ...tracked.map(p => elapsed(p, now).length))
@@ -664,31 +670,25 @@ export const register: Register = on => {
     }
 
     const bar = (p: Plan) => {
-      const close = <Button key={`close-${p.id}`} plain dimColor label="✕" onPress={() => dropPlan($, p.id)} />
-      if (p.state === 'done') {
-        const steps = p.id === AGENTS ? p.agents.length : where(p).total
-        const unit = p.id === AGENTS ? 'agent' : 'step'
-        const label = `${p.title} · ${steps} ${unit}${steps === 1 ? '' : 's'} · ${elapsed(p, now)}`
-        const f = fadeOf(p, now)
-        const W = (cols - 4) * PX_PER_COL
-        return [
-          <Box key={`bar-${p.id}`} flexDirection="row" gap={1}>
-            {Svg ? (
-              <Svg source={summarySvg(p, label, W, now)} alt={`✓ ${label}`} width={W} height={16} isInteractive />
-            ) : (
-              <Text wrap="truncate">
-                <Text color={STATE_COLOR.done} dimColor={f > 0.5}>
-                  {dissolve('✓', f)}
-                </Text>
-                <Text color={dim}>{` ${dissolve(label, f)}`}</Text>
-              </Text>
-            )}
-            <Box flexGrow={1} />
-            {f === 0 && close}
-          </Box>,
-        ]
-      }
+      const f = fadeOf(p, now)
+      const isFading = Boolean(p.fadeAt)
+      const fade = (s: string) => dissolve(s, f)
+      const close = !isFading ? <Button key={`close-${p.id}`} plain dimColor label="✕" onPress={() => dropPlan($, p.id)} /> : null
       if (p.id === AGENTS) {
+        if (p.state === 'done') {
+          const count = p.agents.length
+          const label = `${p.title} · ${count} agent${count === 1 ? '' : 's'} · ${elapsed(p, now)}`
+          return [
+            <Box key={`bar-${p.id}`} flexDirection="row" gap={1}>
+              <Text wrap="truncate">
+                <Text color={STATE_COLOR.done}>{fade('✓')}</Text>
+                <Text color={dim}>{` ${fade(label)}`}</Text>
+              </Text>
+              <Box flexGrow={1} />
+              {close}
+            </Box>,
+          ]
+        }
         const ended = p.agents.filter(a => a.endedAt !== null).length
         return [
           <Box key={`bar-${p.id}`} flexDirection="row" gap={1}>
@@ -703,37 +703,39 @@ export const register: Register = on => {
       }
       const pct = percent(p)
       const color = STATE_COLOR[p.state]
+      // only a running bar blinks; paused, done and the rest hold still
       const glyph = p.state === 'running' && n % 2 === 1 ? '○' : STATE_GLYPH[p.state]
       const words = detail(p)
       const wordsColor = p.state === 'running' ? dim : color
       const pctText = `${String(pct).padStart(3, ' ')}%`
+      const below = isFading ? [] : strips(p)
 
       if (isTerminal) {
         const rule = lineText(p, ruleCols)
         return [
           <Box key={`bar-${p.id}`} flexDirection="row" gap={1}>
-            <Text color={color}>{glyph}</Text>
+            <Text color={color}>{fade(glyph)}</Text>
             <Box width={titleCols} flexShrink={0}>
               <Text bold wrap="truncate">
-                {p.title}
+                {fade(p.title)}
               </Text>
             </Box>
             <Text>
-              <Text color={color}>{rule.lit}</Text>
-              <Text color={UNLIT}>{rule.rest}</Text>
+              <Text color={color}>{fade(rule.lit)}</Text>
+              <Text color={UNLIT}>{fade(rule.rest)}</Text>
             </Text>
             <Box width={detailCols} flexShrink={0}>
               <Text color={wordsColor} wrap="truncate">
-                {words}
+                {fade(words)}
               </Text>
             </Box>
             <Box width={timeCols} flexShrink={0}>
-              <Text color={dim}>{elapsed(p, now)}</Text>
+              <Text color={dim}>{fade(elapsed(p, now))}</Text>
             </Box>
-            <Text color={dim}>{pctText}</Text>
+            <Text color={dim}>{fade(pctText)}</Text>
             {close}
           </Box>,
-          ...strips(p),
+          ...below,
         ]
       }
 
@@ -742,21 +744,21 @@ export const register: Register = on => {
       return [
         <Box key={`bar-${p.id}`} flexDirection="column" gap={1}>
           <Box flexDirection="row" alignItems="center" gap={1}>
-            <Text color={color}>{glyph}</Text>
+            <Text color={color}>{fade(glyph)}</Text>
             <Text bold wrap="truncate">
-              {p.title}
+              {fade(p.title)}
             </Text>
             <Text color={wordsColor} wrap="truncate">
-              {words}
+              {fade(words)}
             </Text>
             <Box flexGrow={1} />
-            <Text color={dim}>{elapsed(p, now)}</Text>
-            <Text>{pctText}</Text>
+            <Text color={dim}>{fade(elapsed(p, now))}</Text>
+            <Text>{fade(pctText)}</Text>
             {close}
           </Box>
-          <Svg source={lineSvg(p, W)} alt={alt} width={W} height={LINE_H} isInteractive />
+          <Svg source={lineSvg(p, W, isFading)} alt={alt} width={W} height={LINE_H} isInteractive />
         </Box>,
-        ...strips(p),
+        ...below,
       ]
     }
 
