@@ -74,11 +74,14 @@ ssh = "empire"
 supports shortcuts before adding the table; older versions reject it. Do not
 rewrite repo bindings merely to perform a login.
 
-In captured sessions, run only the shortcut with `--print-command`. Have the
-user rerun that command without the flag from the same repo in an external
-terminal, or use `--context` with the resolved context. These shortcuts log in
-only; they never forward provider arguments. Guarded operations still use
-`exec`. Keep the exact event-provided login argv for recovery below.
+In captured sessions, run only the shortcut with `--print-command`.
+Have the user open a separate terminal app, such as Terminal, iTerm, or Ghostty.
+They rerun the command without the flag from the same repository, outside
+Codex or Claude. Do not use a chat shell command.
+An explicit `--context` may select the resolved context instead.
+These shortcuts log in only; they never forward provider arguments.
+Guarded operations still use `exec`. Keep the exact event-provided login argv
+for recovery below.
 
 ## GitHub CLI
 
@@ -105,6 +108,14 @@ prerequisite for these operations.
   the GitHub context selected above. This is the only cross-context retry the
   command boundaries below allow.
 
+If guarded execution reports unverified GitHub system credential storage,
+check whether the execution environment restricts credential-store access.
+When it does, request scoped access for the exact guarded command and retry
+once. Stop if that retry fails. Do not rerun unchanged restricted commands,
+request login from this diagnostic alone, or weaken secure-storage checks.
+A confirmed plaintext-storage diagnostic requires native secure-storage repair
+in a separate terminal app before another guarded attempt.
+
 Mixed-provider execution remains unsupported. Selecting an existing GitHub-only
 context keeps its Expected Identity and credential-store guard in force.
 
@@ -124,14 +135,19 @@ authmux login CONTEXT --provider PROVIDER --print-command
 ```
 
 Then report that the user should rerun the same `authmux login` without
-`--print-command` in a separate terminal, then stop that provider operation.
+`--print-command` in a separate terminal app (Terminal, iTerm, or Ghostty),
+outside Codex or Claude. Chat shell commands retain native output even when
+the user starts them. Stop that provider operation until the user confirms
+completion.
 Keeping authmux in the external path preserves provider selectors omitted from
 the sanitized native-command preview. Never ask the user to paste provider
 output, a browser URL, device or authorization code, password, token, or MFA
 value. After confirmation, retry the preserved original argv once without a
-status round trip. If it returns exit code `10` again, stop and report the
-repeated Reauthentication requirement; never start a second login or switch
-identity.
+status round trip. Report the original operation's substantive result.
+Native login success leaves the operation pending. Recovery is complete only
+when its guarded retry succeeds. If it returns exit code `10` again, report
+the repeated Reauthentication requirement and stop. Never start a second login
+or switch identity.
 
 GCP child failures do not produce this event because authmux cannot safely
 classify arbitrary child output. Do not infer Reauthentication from a generic
@@ -140,6 +156,8 @@ nonzero child exit or retry it automatically.
 If AWS identity observation reports that it could not reach the provider, do
 not start login. Request network access for the preserved guarded command and
 retry it once. Stop if the network-enabled retry fails; do not bypass authmux.
+An unclassified exit-5 provider failure does not establish expiry or missing
+credentials. Do not recommend login from that failure alone.
 
 ## Native Git
 
