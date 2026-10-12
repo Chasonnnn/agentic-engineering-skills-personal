@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { AgentRun, Plan, PlanStage, PlanState, StepStatus, TitleState } from '../types'
+import type { AgentRun, Plan, PlanStage, PlanState, PlanStep, StepStatus, TitleState } from '../types'
 
 const TOOL = 'mcp__progress__track'
 const plans = atom({ plugin: 'progress', key: 'plans' } as const, [])
@@ -13,6 +13,7 @@ const MAX_BARS = 3
 const FADE_MS = 1500 // a finished bar fades out over this long once the next prompt is sent
 const FADE_FRAMES = 10
 const STRIP_LINGER_MS = 5000
+const STALE_TURNS = 2 // an open bar no update touched for this many main turns was left behind, as after a pivot
 const MAX_STRIPS = 4
 const AGENTS = 'agents:auto' // slug() never yields ':', so no model id can take it
 const PX_PER_COL = 8 // desktop reports about 8 CSS px per column
@@ -26,12 +27,23 @@ const AGENT_COLOR: Record<AgentRun['state'], string> = { running: ACCENT, waitin
 const STATUSES: StepStatus[] = ['pending', 'active', 'done', 'error', 'skipped']
 
 const RULES = `# Progress bars
-Tasks needing more than ~3 edits or commands get a bar via ${TOOL}: create it once with a title and the full breakdown (2-7 stages with short steps, or one stage for a flat list; titles of at most 4 words, in the user's language), then update it with short calls only: {id, next:true} when the active step is finished, or {id, done:[...], active:"..."}, {id, failed:"...", note}. Send state "needs_input" with a note before asking the user to decide. When the work is finished, close the bar with {id, state:"done"} before the final reply. The bar title also becomes the session name, so make it describe the task. Never describe the bars to the user.`
+Tasks needing more than ~3 edits or commands get a bar via ${TOOL}: create it once with {id, title, stages:[{name, steps:["Step title", ...]}]} (2-7 stages with short steps, or one stage for a flat list; titles of at most 4 words, in the user's language), then update it with short calls only: {id, next:true} when the active step is finished, or {id, done:[...], active:"..."}, {id, failed:"...", note}. done, active and failed take exact step titles; free text goes in note. Send state "needs_input" with a note before asking the user to decide. When the work is finished, close the bar with {id, state:"done"} before the final reply. The bar title also becomes the session name, so make it describe the task. Never describe the bars to the user.`
 
 type Raw = Record<string, unknown>
 const str = (v: unknown, max = 120) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '')
-const status = (v: unknown): StepStatus => (STATUSES.includes(v as StepStatus) ? (v as StepStatus) : 'pending')
-const list = (v: unknown): Raw[] => (Array.isArray(v) ? v.filter(x => x && typeof x === 'object') : []) as Raw[]
+const isStatus = (v: unknown): v is StepStatus => STATUSES.includes(v as StepStatus)
+// the model sometimes sends an array as JSON text
+const items = (v: unknown): unknown[] => {
+  if (typeof v === 'string' && /^\s*\[/.test(v)) {
+    try {
+      v = JSON.parse(v)
+    } catch {
+      return []
+    }
+  }
+  return Array.isArray(v) ? v : []
+}
+const isRaw = (v: unknown): v is Raw => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
 const isFinished = (s: StepStatus) => s === 'done' || s === 'skipped'
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
 const slug = (s: string) =>
@@ -43,11 +55,38 @@ const slug = (s: string) =>
 
 // ---------- plan model ----------
 
-// short updates against the stored plan: {next:true}, {done:[titles]}, {active:title}, {failed:title}
-function applyOps(stages: PlanStage[], input: Raw): PlanStage[] {
+// one title or a list of them
+const titles = (v: unknown): string[] => (typeof v === 'string' && !/^\s*\[/.test(v) ? [v] : items(v).filter(x => typeof x === 'string'))
+
+// a step from {title, status} or a bare title; a restructured plan keeps the status of steps it carries over
+function readStep(v: unknown, prevSteps: PlanStep[]): PlanStep | null {
+  const title = isRaw(v) ? str(v.title ?? v.name) : str(v)
+  if (!title) return null
+  const asked = isRaw(v) ? v.status : undefined
+  const kept = prevSteps.find(st => same(st.title, title))?.status
+  return { title, status: isStatus(asked) ? asked : (kept ?? 'pending') }
+}
+
+// stages as the model sends them: [{name, steps}], a flat list of titles, or top-level steps
+function readStages(input: Raw, prev: Plan | null): PlanStage[] {
+  const prevSteps = prev?.stages.flatMap(s => s.steps) ?? []
+  const steps = (v: unknown) => items(v).flatMap(x => readStep(x, prevSteps) ?? [])
+  const raw = items(input.stages)
+  const grouped = raw.filter(isRaw).map(s => ({ name: str(s.name ?? s.title, 60) || 'Stage', steps: steps(s.steps) }))
+  const flat = raw.some(isRaw) ? [] : steps(raw.length > 0 ? raw : input.steps)
+  return [...grouped, { name: 'Steps', steps: flat }].filter(s => s.steps.length > 0)
+}
+
+// short updates: {next:true}, {done:[titles]}, {active:title}, {failed:title}; titles that match no step come back
+function applyOps(stages: PlanStage[], input: Raw): { stages: PlanStage[]; unknown: string[] } {
   const out = stages.map(s => ({ ...s, steps: s.steps.map(st => ({ ...st })) }))
   const steps = out.flatMap(s => s.steps)
-  const find = (title: string) => steps.find(st => same(st.title, title))
+  const unknown: string[] = []
+  const find = (title: string) => {
+    const st = steps.find(x => same(x.title, title))
+    if (!st && title.trim()) unknown.push(str(title, 60))
+    return st
+  }
   if (input.next === true) {
     const activeAt = steps.findIndex(st => st.status === 'active')
     const at = activeAt >= 0 ? activeAt : steps.findIndex(st => !isFinished(st.status))
@@ -56,8 +95,8 @@ function applyOps(stages: PlanStage[], input: Raw): PlanStage[] {
     const following = steps.slice(at + 1).find(st => st.status === 'pending')
     if (following) following.status = 'active'
   }
-  for (const t of Array.isArray(input.done) ? input.done : []) {
-    const st = typeof t === 'string' ? find(t) : undefined
+  for (const t of titles(input.done)) {
+    const st = find(t)
     if (st) st.status = 'done'
   }
   const active = typeof input.active === 'string' ? find(input.active) : undefined
@@ -71,19 +110,14 @@ function applyOps(stages: PlanStage[], input: Raw): PlanStage[] {
   const failed = typeof input.failed === 'string' ? find(input.failed) : undefined
   if (failed) failed.status = 'error'
 
-  return out
+  return { stages: out, unknown }
 }
 
-function normalize(input: Raw, prev: Plan | null, now: number, id: string): Plan {
-  const isPartial = list(input.stages).length === 0 && prev !== null
-  const stages: PlanStage[] = isPartial
-    ? applyOps(prev.stages, input)
-    : list(input.stages)
-        .map(s => ({
-          name: str(s.name, 60) || 'Stage',
-          steps: list(s.steps).map(st => ({ title: str(st.title) || 'Step', status: status(st.status) })),
-        }))
-        .filter(s => s.steps.length > 0)
+function normalize(input: Raw, prev: Plan | null, now: number, id: string): { plan: Plan; unknown: string[] } {
+  const fresh = readStages(input, prev)
+  const isPartial = fresh.length === 0 && prev !== null
+  // ops apply to a new or restructured plan too, so one call can create and advance it
+  const { stages, unknown } = applyOps(isPartial ? prev.stages : fresh, input)
   const steps = stages.flatMap(s => s.steps)
   // a fresh plan with nothing active starts on its first open step
   if (!isPartial && !steps.some(s => s.status === 'active')) {
@@ -92,13 +126,13 @@ function normalize(input: Raw, prev: Plan | null, now: number, id: string): Plan
   }
   const title = str(input.title, 60) || prev?.title || 'Plan'
   const isAllDone = steps.length > 0 && steps.every(s => isFinished(s.status))
-  const asked = input.state as PlanState
+  const asked = (input.state ?? input.status) as PlanState
   const state: PlanState = STATE_GLYPH[asked] ? asked : isAllDone ? 'done' : typeof input.failed === 'string' ? 'error' : 'running'
   // any update ends a pause; the paused time stays out of the clock
   const pausedAt = prev?.state === 'paused' ? (prev.pausedAt ?? null) : null
   const pausedMs = (prev?.pausedMs ?? 0) + (pausedAt !== null && state !== 'paused' ? now - pausedAt : 0)
 
-  return {
+  const plan: Plan = {
     id,
     title,
     stages,
@@ -109,8 +143,10 @@ function normalize(input: Raw, prev: Plan | null, now: number, id: string): Plan
     pausedAt: state === 'paused' ? (pausedAt ?? now) : null,
     pausedMs,
     fadeAt: null,
+    idleTurns: 0,
     agents: prev?.agents ?? [],
   }
+  return { plan, unknown }
 }
 
 type Where = { finished: number; total: number; stage: number; step: number; stageSize: number; activeTitle: string | null }
@@ -172,7 +208,7 @@ function detail(p: Plan): string {
   return `${p.state === 'paused' ? 'Paused · ' : ''}${stageLabel(p)}${active ? ` · ${active}` : ''}`
 }
 
-const isOpenPlan = (p: Plan) => p.id !== AGENTS && p.state !== 'done'
+const isOpenPlan = (p: Plan) => p.id !== AGENTS && p.state !== 'done' && !p.fadeAt
 
 // ---------- drawing ----------
 
@@ -264,14 +300,14 @@ async function dropPlan($: EngineInterface, id: string) {
   await syncStatus($)
 }
 
-// a done bar holds until the next prompt; then every done bar fades out and leaves
-async function fadeDoneBars($: EngineInterface) {
+// fades out the bars `pick` chooses, then removes them: done bars on the next prompt, stale ones at a turn's end
+async function fadeBars($: EngineInterface, pick: (p: Plan) => boolean) {
   const now = await $.clock.now()
   let fading: string[] = []
   await update($, plans, all => {
     fading = []
     return all.map(p => {
-      if (p.state !== 'done' || p.fadeAt) return p
+      if (p.fadeAt || !pick(p)) return p
       fading.push(p.id)
       return { ...p, fadeAt: now }
     })
@@ -282,8 +318,8 @@ async function fadeDoneBars($: EngineInterface) {
     $.clock.after((k * FADE_MS) / FADE_FRAMES, () => update($, tick, n => n + 1))
   }
   $.clock.after(FADE_MS, async () => {
-    // a bar reopened during the fade has lost its fadeAt and stays
-    const gone = (await read($, plans)).filter(p => fading.includes(p.id) && p.state === 'done' && p.fadeAt === now)
+    // a bar updated during the fade has lost its fadeAt and stays
+    const gone = (await read($, plans)).filter(p => fading.includes(p.id) && p.fadeAt === now)
     for (const p of gone) forget(p.id)
     if (gone.length > 0) await update($, plans, all => all.filter(p => !gone.some(g => g.id === p.id)))
     await syncStatus($)
@@ -352,7 +388,8 @@ async function editAgent($: EngineInterface, agentId: string, change: (a: AgentR
   )
 }
 
-const STEP_SCHEMA = { type: 'object', required: ['title', 'status'], properties: { title: { type: 'string' }, status: { enum: STATUSES } } }
+// a bare title is the usual form; {title, status} also works
+const STEP_SCHEMA = { anyOf: [{ type: 'string' }, { type: 'object', required: ['title'], properties: { title: { type: 'string' }, status: { enum: STATUSES } } }] }
 const WORK_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Bash'])
 const WORK_BEFORE_NUDGE = 4
 const CALLS_BEFORE_STALE = 6
@@ -363,6 +400,8 @@ export const register: Register = on => {
   let workCalls = 0
   let sinceUpdate = 0
   let isNudged = false
+  // bars this main turn updated
+  const touched = new Set<string>()
 
   on('session.start', async ($, e, next) => {
     await $.tool.register({
@@ -376,13 +415,13 @@ export const register: Register = on => {
           title: { type: 'string', description: 'At most 4 words; also used as the session name' },
           stages: {
             type: 'array',
-            description: 'Full breakdown, only when creating or restructuring',
+            description: 'Full breakdown, only when creating or restructuring: [{name: "Build", steps: ["Step title", ...]}]',
             items: { type: 'object', required: ['name', 'steps'], properties: { name: { type: 'string' }, steps: { type: 'array', items: STEP_SCHEMA } } },
           },
           next: { type: 'boolean', description: 'Active step finished, start the next one' },
-          done: { type: 'array', items: { type: 'string' }, description: 'Step titles now finished' },
-          active: { type: 'string', description: 'Step title now in progress' },
-          failed: { type: 'string', description: 'Step title that failed' },
+          done: { type: 'array', items: { type: 'string' }, description: 'Exact step titles now finished' },
+          active: { type: 'string', description: 'Exact step title now in progress; free text goes in note' },
+          failed: { type: 'string', description: 'Exact step title that failed' },
           state: { enum: ['running', 'needs_input', 'error', 'done'] },
           note: { type: 'string', description: 'One line for needs_input or error' },
         },
@@ -411,12 +450,13 @@ export const register: Register = on => {
     workCalls = 0
     sinceUpdate = 0
     isNudged = false
+    touched.clear()
     return next(e)
   })
 
-  // the person answering clears "needs input"; open bars ride along as one short context line
+  // the person answering, here or from a phone, clears "needs input"; open bars ride along as one short context line
   on('prompt.submit', async ($, e, next) => {
-    if (e.origin.kind !== 'composer') return next(e)
+    if (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge') return next(e)
     const all = await read($, plans)
     if (all.some(p => p.state === 'needs_input')) {
       await update($, plans, xs => xs.map(p => (p.state === 'needs_input' ? { ...p, state: 'running' as const, note: null } : p)))
@@ -432,7 +472,7 @@ export const register: Register = on => {
   on('classic.UserPromptSubmit', async ($, e, next) => {
     const isPerson = e.source === undefined || e.source === 'user'
     // the person's next prompt fades the done bars
-    if (isPerson) await fadeDoneBars($)
+    if (isPerson) await fadeBars($, p => p.state === 'done')
     const result = await next(e)
     if (result.sessionTitle || !isPerson) return result
     const t = await read($, titleState)
@@ -458,13 +498,24 @@ export const register: Register = on => {
     const raw = e as unknown as Raw
     const now = await $.clock.now()
     const id = slug(str(raw.id, 60) || str(raw.title, 60))
-    const prev = (await read($, plans)).find(p => p.id === id) ?? null
-    const next = normalize(raw, prev, now, id)
-    if (next.stages.length === 0) return { deny: `track: no bar "${id}" yet; create it with title and stages.` }
+    const all = await read($, plans)
+    const prev = all.find(p => p.id === id) ?? null
+    const { plan: next, unknown } = normalize(raw, prev, now, id)
+    if (next.stages.length === 0) {
+      // closing a bar that already left is not a mistake worth a retry
+      if (!prev && (raw.state ?? raw.status) === 'done') return { result: `${id}: no open bar, nothing to close` }
+      const why = raw.stages !== undefined || raw.steps !== undefined ? `the stages for "${id}" have no steps` : `no bar "${id}" yet`
+      const open = all.filter(isOpenPlan).map(p => p.id)
+      const hint = open.length > 0 ? ` Open bars: ${open.join(', ')}.` : ''
+      return { deny: `track: ${why}. Create it with {id, title, stages:[{name:"Build", steps:["First step","Second step"]}]}.${hint}` }
+    }
     sinceUpdate = 0
+    touched.add(id)
     await putPlan($, next)
     const w = where(next)
-    return { result: `${id}: ${w.finished}/${w.total}, ${next.state}${w.activeTitle && next.state !== 'done' ? `, active "${w.activeTitle}"` : ''}` }
+    const left = next.stages.flatMap(s => s.steps).filter(st => !isFinished(st.status)).map(st => st.title)
+    const miss = unknown.length > 0 ? `; no step titled ${unknown.map(t => `"${t}"`).join(', ')}, open steps: ${left.slice(0, 6).join(' | ') || 'none'}` : ''
+    return { result: `${id}: ${w.finished}/${w.total}, ${next.state}${w.activeTitle && next.state !== 'done' ? `, active "${w.activeTitle}"` : ''}${miss}` }
   })
 
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
@@ -472,10 +523,12 @@ export const register: Register = on => {
     const mark = (from: PlanState, to: PlanState, note?: null) =>
       update($, plans, all => all.map(p => (p.id === live?.id && p.state === from ? { ...p, state: to, ...(note === null ? { note } : {}) } : p)))
     if (live?.state === 'running') await mark('running', 'needs_input')
-    const ran = await next(e)
-    // answered: back to work, the question's note goes with it
-    if (live) await mark('needs_input', 'running', null)
-    return ran
+    try {
+      return await next(e)
+    } finally {
+      // answered, refused or interrupted: back to work, the question's note goes with it
+      if (live) await mark('needs_input', 'running', null)
+    }
   })
 
   // main loop: soft reminders only, never a refusal
@@ -519,7 +572,7 @@ export const register: Register = on => {
     let isNew = false
     await update($, plans, all => {
       // the parent's bar, else the newest open bar, else the mod's own; a bar closed meanwhile is skipped
-      const isLive = (h: string | undefined) => h !== undefined && h !== AGENTS && all.some(p => p.id === h && p.state !== 'done')
+      const isLive = (h: string | undefined) => h !== undefined && all.some(p => p.id === h && isOpenPlan(p))
       home = [parentHome, all.filter(isOpenPlan).at(-1)?.id].find(isLive) ?? AGENTS
       isNew = false
       const host = all.find(p => p.id === home)
@@ -560,18 +613,25 @@ export const register: Register = on => {
       agentHome.delete(agentId)
     }
     if (!agentId) {
-      // the main turn ended: a running plan whose steps are all finished closes itself, any other pauses
+      // the main turn ended: a running plan whose steps are all finished closes itself, any other pauses;
+      // an open bar this turn left alone ages, and one left alone for STALE_TURNS fades out
       const now = await $.clock.now()
       let isChanged = false
       await update($, plans, all => {
         isChanged = false
         return all.map(p => {
-          const steps = p.stages.flatMap(s => s.steps)
-          if (p.id === AGENTS || p.state !== 'running' || steps.length === 0) return p
+          if (!isOpenPlan(p)) return p
           isChanged = true
-          return steps.every(s => isFinished(s.status)) ? { ...p, state: 'done' as const, doneAt: now } : { ...p, state: 'paused' as const, pausedAt: now }
+          const idleTurns = touched.has(p.id) ? 0 : (p.idleTurns ?? 0) + 1
+          const steps = p.stages.flatMap(s => s.steps)
+          if (p.state !== 'running' || steps.length === 0) return { ...p, idleTurns }
+          return steps.every(s => isFinished(s.status))
+            ? { ...p, idleTurns, state: 'done' as const, doneAt: now }
+            : { ...p, idleTurns, state: 'paused' as const, pausedAt: now }
         })
       })
+      touched.clear()
+      await fadeBars($, p => isOpenPlan(p) && (p.idleTurns ?? 0) >= STALE_TURNS)
       if (isChanged) await syncStatus($)
     }
     return next(e)

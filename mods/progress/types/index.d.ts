@@ -24,6 +24,8 @@ export type Plan = {
   pausedMs?: number
   // set on the next prompt after the bar is done; the bar fades out from here
   fadeAt?: number | null
+  // main turns that ended without an update to this bar; at STALE_TURNS it fades out
+  idleTurns?: number
   agents: AgentRun[]
 }
 export type TitleState = { last: string | null; isUserOwned: boolean; hasAsked: boolean }

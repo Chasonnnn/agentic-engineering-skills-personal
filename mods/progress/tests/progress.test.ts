@@ -185,3 +185,145 @@ test('a bar the model marked needs_input runs again once the question is answere
   expect(await ui.find({ type: 'Text', text: /Build 1\/2 · Scaffold/ })).toBeDefined()
   await ui.unmount()
 })
+
+// ---------- replays of calls the mod refused or ignored in real sessions ----------
+
+test('steps sent as bare titles under stage titles make a bar, and done/active apply on create', async ($, on) => {
+  world(on)
+  const made = await $.tool.call({
+    tool: TOOL,
+    title: 'Prefill bottleneck assessment',
+    stages: [
+      { title: 'Measure', steps: ['Prompt layout', 'Engine config', 'Record-run throughput'] },
+      { title: 'Assess', steps: ['Write assessment'] },
+    ],
+    done: ['Prompt layout'],
+    active: 'Engine config',
+  } as never)
+  expect(made.result).toBe('prefill-bottleneck-assessment: 1/4, running, active "Engine config"')
+})
+
+test('a flat list of titles as stages makes a one-stage bar', async ($, on) => {
+  world(on)
+  const made = await $.tool.call({
+    tool: TOOL,
+    id: 'acl-merge',
+    title: 'Merge lit reviews',
+    stages: ['Read Astra workbook', 'Read downloaded notebook', 'Compare with our page'],
+    done: ['Read Astra workbook'],
+    active: 'Read downloaded notebook',
+  } as never)
+  expect(made.result).toBe('acl-merge: 1/3, running, active "Read downloaded notebook"')
+})
+
+test('top-level steps sent as JSON text make a bar', async ($, on) => {
+  world(on)
+  const made = await $.tool.call({ tool: TOOL, title: 'Leak fixes 1–3', steps: '["Adjudication book", "v2 synthetic", "Encoder sets"]' } as never)
+  expect(made.result).toBe('leak-fixes-1-3: 0/3, running, active "Adjudication book"')
+})
+
+test('a restructure keeps the progress of steps it carries over', async ($, on) => {
+  world(on)
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  await $.tool.call({ tool: TOOL, id: 'mod', next: true } as never)
+  const moved = await $.tool.call({ tool: TOOL, id: 'mod', stages: [{ name: 'Build', steps: ['Scaffold', 'Bars', 'Polish'] }, { name: 'Verify', steps: ['Tests'] }] } as never)
+  expect(moved.result).toBe('mod: 1/4, running, active "Bars"')
+})
+
+test('closing a bar that is already gone is not an error', async ($, on) => {
+  world(on)
+  const ran = await $.tool.call({ tool: TOOL, id: 'blind-review', state: 'done' } as never)
+  expect(ran.deny).toBeUndefined()
+  expect(ran.result).toBe('blind-review: no open bar, nothing to close')
+})
+
+test('stages with no steps are refused with a working example and the open bars', async ($, on) => {
+  world(on)
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  const ran = await $.tool.call({ tool: TOOL, id: 'other', title: 'Other', stages: [{ name: 'Empty', steps: [] }] } as never)
+  expect(ran.deny).toContain('the stages for "other" have no steps')
+  expect(ran.deny).toContain('steps:["First step","Second step"]')
+  expect(ran.deny).toContain('Open bars: mod.')
+})
+
+test('a step title that matches nothing is reported, not ignored', async ($, on) => {
+  world(on)
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  const ran = await $.tool.call({ tool: TOOL, id: 'mod', active: 'Lanes running' } as never)
+  expect(ran.result).toBe('mod: 0/3, running, active "Scaffold"; no step titled "Lanes running", open steps: Scaffold | Bars | Tests')
+})
+
+test('status is read as state', async ($, on) => {
+  world(on)
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  const ran = await $.tool.call({ tool: TOOL, id: 'mod', status: 'done' } as never)
+  expect(ran.result).toBe('mod: 0/3, done')
+})
+
+// ---------- bars left behind ----------
+
+const prompts = (on: On) => on('prompt.submit', async ($, e) => ({ text: e.text }) as never)
+const turnStart = (on: On) => on('turn.start', async ($, e) => ({ turnId: e.turnId }) as never)
+
+test('an interrupted question does not leave the bar waiting on input', async ($, on) => {
+  world(on)
+  on('tool.call', { tool: 'AskUserQuestion' }, async () => {
+    throw new Error('interrupted')
+  })
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  try {
+    await $.tool.call({ tool: 'AskUserQuestion', questions: [] } as never)
+  } catch {}
+  const ui = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  expect(await ui.find({ type: 'Text', text: /Needs your input/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a reply from a phone clears needs_input', async ($, on) => {
+  world(on)
+  prompts(on)
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  await $.tool.call({ tool: TOOL, id: 'mod', state: 'needs_input', note: 'pick DB' } as never)
+  await $.prompt.submit({ text: 'postgres', origin: { kind: 'bridge' }, wait: false } as never)
+  const ui = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  expect(await ui.find({ type: 'Text', text: /Needs your input/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a bar left untouched for two turns after a pivot fades out', async ($, on) => {
+  const clock = world(on)
+  turns(on)
+  turnStart(on)
+  const turn = async () => {
+    await $.turn.start({ text: 'something else', turnId: 't' } as never)
+    await $.turn.complete(TURN_END)
+  }
+  await $.turn.start({ text: 'build it', turnId: 't' } as never)
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  await $.turn.complete(TURN_END)
+  await turn()
+  const still = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  expect(await still.find({ type: 'Text', text: /Paused/ })).toBeDefined()
+  await still.unmount()
+  await turn()
+  await clock.advance(1_600)
+  const gone = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  expect(await gone.find({ type: 'Text', text: /Own progress mod/ })).toBeUndefined()
+  await gone.unmount()
+})
+
+test('a bar the model keeps updating does not go stale', async ($, on) => {
+  const clock = world(on)
+  turns(on)
+  turnStart(on)
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  for (let i = 0; i < 3; i++) {
+    await $.turn.start({ text: 'go on', turnId: 't' } as never)
+    await $.tool.call({ tool: TOOL, id: 'mod', active: 'Bars' } as never)
+    await $.turn.complete(TURN_END)
+  }
+  await clock.advance(1_600)
+  const ui = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  expect(await ui.find({ type: 'Text', text: /Own progress mod/ })).toBeDefined()
+  await ui.unmount()
+})
