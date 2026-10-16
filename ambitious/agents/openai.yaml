@@ -1,0 +1,5 @@
+interface:
+  display_name: "Ambitious"
+  short_description: "Raise the task higher, deeper, and wider, then do it"
+policy:
+  allow_implicit_invocation: false
