@@ -8,6 +8,7 @@ Clone once, then symlink each skill into the personal skills directory:
 
 ```sh
 git clone git@github.com:Chasonnnn/agentic-engineering-skills-personal.git ~/agentic-engineering-skills-personal
+ln -s ~/agentic-engineering-skills-personal/agy ~/.claude/skills/agy
 ln -s ~/agentic-engineering-skills-personal/ambitious ~/.claude/skills/ambitious
 ln -s ~/agentic-engineering-skills-personal/audit-skill ~/.claude/skills/audit-skill
 ln -s ~/agentic-engineering-skills-personal/board-sync ~/.claude/skills/board-sync
@@ -31,6 +32,7 @@ New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-
 
 | Skill | What it does |
 | --- | --- |
+| [agy](agy/SKILL.md) | User-invoked (`/agy`). Wraps the Antigravity CLI (`agy`) for a Gemini 4 Argon second opinion with the same review, challenge, and consult modes and verdict contract as `codex`. Pinned to `gemini-4-argon-high`; read-only by default. |
 | [ambitious](ambitious/SKILL.md) | User-invoked (`/ambitious`). Raises the current task along altitude, depth, and range, sets a measurable target with an outside check, then does the raised version. Based on [Felix Rieseberg's article](https://felixrieseberg.com/how-to-be-more-ambitious-a-tutorial-for-humans-with-models/). |
 | [audit-skill](audit-skill/SKILL.md) | Audit or improve skill instructions and helpers with source-specific evidence; includes optional comparison guidance and the Provencher article reference. |
 | [board-sync](board-sync/SKILL.md) | Sync planning state (specs/ADRs/roadmap) to a GitHub Project board as epic issues with nested sub-issues — epics on the board, slices hidden under them — plus an optional stale-issue refresh. |
