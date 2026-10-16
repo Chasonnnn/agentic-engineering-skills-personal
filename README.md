@@ -16,6 +16,7 @@ ln -s ~/agentic-engineering-skills-personal/authmux ~/.claude/skills/authmux
 ln -s ~/agentic-engineering-skills-personal/codex ~/.claude/skills/codex
 ln -s ~/agentic-engineering-skills-personal/github-pr-validation-loop ~/.claude/skills/github-pr-validation-loop
 ln -s ~/agentic-engineering-skills-personal/no-use-effect ~/.claude/skills/no-use-effect
+ln -s ~/agentic-engineering-skills-personal/opencode ~/.claude/skills/opencode
 ln -s ~/agentic-engineering-skills-personal/orchestrate ~/.claude/skills/orchestrate
 ln -s ~/agentic-engineering-skills-personal/review-and-remediate-server-logs ~/.claude/skills/review-and-remediate-server-logs
 ```
@@ -41,6 +42,7 @@ New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-
 | [dependency-modernization](dependency-modernization/SKILL.md) | Upgrade dependencies with official release review, local feature adoption, compatibility checks, and measured validation. |
 | [github-pr-validation-loop](github-pr-validation-loop/SKILL.md) | Audit open PRs against the current base branch, reimplement valid findings cleanly, close invalid or superseded noise with evidence, and monitor CI through completion. |
 | [no-use-effect](no-use-effect/SKILL.md) | Prefer explicit React data flow, replace ad-hoc Effects with derived state, event handlers, query libraries, or keyed remounting, and contain legitimate external synchronization in named hooks. |
+| [opencode](opencode/SKILL.md) | User-invoked (`/opencode`). Wraps the OpenCode CLI for a second opinion from any model it serves, with the same review, challenge, and consult modes and verdict contract as `codex`. Pinned to `cornell/nto.gemini-4-argon`; read-only by default through inline permission rules. |
 | [orchestrate](orchestrate/SKILL.md) | Coordinates delegates, independent review, and integration; shares CLI execution with `codex`. (Folded in from `orchestrate-skill` with history; that repo is archived.) |
 | [review-and-remediate-server-logs](review-and-remediate-server-logs/SKILL.md) | Review live server logs, prioritize actionable failures, reproduce and fix their causes, validate through CI, and verify the result after an authorized deployment. |
 
