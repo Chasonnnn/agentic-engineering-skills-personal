@@ -4,7 +4,7 @@
 
 Assign a stable diff to a reviewer who did not implement it. Require scope, completion state, actionable findings with file:line evidence and corrections, and one line per check actually performed. P0/P1 blocks; incomplete coverage remains INCOMPLETE even with no findings. Codex reviews use the sibling skill's structured review contract. Other reviewers report the same information in prose. A review verdict expresses review status, not permission to merge or push.
 
-Verify findings before repair. Resolve choices needed by the implementer in the repair assignment. Recheck prior findings and review the new delta; keep implementer and reviewer distinct for that round. The original finder may repair verified findings if another agent reviews its changes. Reassess persistent failures rather than prescribing a fixed number of rounds or expanding scope automatically.
+Verify findings before repair. Resolve choices needed by the implementer in the repair assignment. Recheck prior findings and review the new delta; keep implementer and reviewer distinct for that round. The original finder may repair verified findings if another agent reviews its changes. Cap review-repair at three rounds per change. After the third round, stop dispatching repairs. Reassess the design, or surface the open findings with evidence to the user. Do not expand scope automatically.
 
 ## TDD and behavior-preserving refactors
 
