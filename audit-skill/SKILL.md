@@ -35,6 +35,8 @@ Trace relevant helpers from input selection through side effects to the reported
 
 Use a small safe fixture when it can establish a consequential failure. Do not run production operations to validate a skill. Check unstable CLI/API claims against the installed interface or primary documentation. Verify linked resources and interactions with skills likely to load together; distinguish a target-host defect from an unsupported use on another host.
 
+When the audited skill has helper tests or testing instructions, use [references/test-value.md](references/test-value.md). Review low-value tests and excessive verification requirements alongside missing protection. This remains a skill audit; it does not authorize unrelated application test cleanup.
+
 ## Findings and changes
 
 For each actionable finding, give severity, path:line at the audited revision, triggering task/input, failure mechanism, smallest correction, and evidence. Use P1 for material correctness or authorization failures and P2 for workflow or maintenance defects. Keep optional design improvements separate and state useful constraints to retain.
