@@ -312,6 +312,62 @@ test('a bar left untouched for two turns after a pivot fades out', async ($, on)
   await gone.unmount()
 })
 
+test('turns started by background tasks or teammates do not age a bar', async ($, on) => {
+  const clock = world(on)
+  turns(on)
+  turnStart(on)
+  prompts(on)
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  for (const kind of ['task-notification', 'peer', 'task-notification', 'peer']) {
+    await $.prompt.submit({ text: '<task-notification/>', origin: { kind }, wait: false } as never)
+    await $.turn.start({ text: '', turnId: 't' } as never)
+    await $.turn.complete(TURN_END)
+  }
+  await clock.advance(1_600)
+  const ui = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  expect(await ui.find({ type: 'Text', text: /Own progress mod/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a bar that faded out comes back with its steps on its next update', async ($, on) => {
+  const clock = world(on)
+  turns(on)
+  turnStart(on)
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  await $.tool.call({ tool: TOOL, id: 'mod', next: true } as never)
+  for (let i = 0; i < 3; i++) {
+    await $.turn.start({ text: 'something else', turnId: 't' } as never)
+    await $.turn.complete(TURN_END)
+  }
+  await clock.advance(1_600)
+  const moved = await $.tool.call({ tool: TOOL, id: 'mod', done: ['Bars'], active: 'Tests' } as never)
+  expect(moved.result).toBe('mod: 2/3, running, active "Tests" (restored)')
+  const ui = await $.ui.mount({ plugin: 'progress', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  expect(await ui.find({ type: 'Text', text: /Own progress mod/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('an update to a bar the session never kept rebuilds one stage from the titles it names', async ($, on) => {
+  world(on)
+  const ran = await $.tool.call({ tool: TOOL, id: 'fix-round', done: ['#455 CI, merge'], active: '#322 Codex lane' } as never)
+  expect(ran.deny).toBeUndefined()
+  expect(ran.result).toBe('fix-round: 1/2, running, active "#322 Codex lane" (recreated from this update; send stages to restore the full plan)')
+})
+
+test('closing a bar that faded out does not bring it back', async ($, on) => {
+  const clock = world(on)
+  turns(on)
+  turnStart(on)
+  await $.tool.call({ tool: TOOL, id: 'mod', title: 'Own progress mod', stages: STAGES } as never)
+  for (let i = 0; i < 3; i++) {
+    await $.turn.start({ text: 'something else', turnId: 't' } as never)
+    await $.turn.complete(TURN_END)
+  }
+  await clock.advance(1_600)
+  const ran = await $.tool.call({ tool: TOOL, id: 'mod', state: 'done', done: ['Tests'] } as never)
+  expect(ran.result).toBe('mod: no open bar, nothing to close')
+})
+
 test('a bar the model keeps updating does not go stale', async ($, on) => {
   const clock = world(on)
   turns(on)
