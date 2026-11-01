@@ -5,6 +5,7 @@ import type { AgentRun, Plan, PlanStage, PlanState, PlanStep, StepStatus, TitleS
 
 const TOOL = 'mcp__progress__track'
 const plans = atom({ plugin: 'progress', key: 'plans' } as const, [])
+const recent = atom({ plugin: 'progress', key: 'recent' } as const, [])
 const isOpen = atom({ plugin: 'progress', key: 'isOpen' } as const, true)
 const tick = atom({ plugin: 'progress', key: 'tick' } as const, 0)
 const titleState = atom({ plugin: 'progress', key: 'title' } as const, { last: null, isUserOwned: false, hasAsked: false } as TitleState)
@@ -15,6 +16,9 @@ const FADE_FRAMES = 10
 const STRIP_LINGER_MS = 5000
 const STALE_TURNS = 2 // an open bar no update touched for this many main turns was left behind, as after a pivot
 const MAX_STRIPS = 4
+const MAX_RECENT = 6
+// turns no person started: a background task or teammate reporting in leaves the bar's age alone
+const MACHINE_ORIGINS = new Set(['task-notification', 'peer', 'scheduled-trigger'])
 const AGENTS = 'agents:auto' // slug() never yields ':', so no model id can take it
 const PX_PER_COL = 8 // desktop reports about 8 CSS px per column
 
@@ -287,6 +291,13 @@ function forget(id: string) {
   for (const [agentId, home] of agentHome) if (home === id) agentHome.delete(agentId)
 }
 
+// bars that left without the person closing them; their agents' strips do not come back
+async function keep($: EngineInterface, gone: Plan[]) {
+  if (gone.length === 0) return
+  const kept = gone.filter(p => p.id !== AGENTS).map(p => ({ ...p, fadeAt: null, idleTurns: 0, agents: [] }))
+  await update($, recent, all => [...all.filter(p => !kept.some(k => k.id === p.id)), ...kept].slice(-MAX_RECENT))
+}
+
 async function syncStatus($: EngineInterface) {
   const live = (await read($, plans)).filter(isOpenPlan).at(-1)
   if (!live || (await read($, isOpen))) return $.ui.status(undefined)
@@ -321,6 +332,7 @@ async function fadeBars($: EngineInterface, pick: (p: Plan) => boolean) {
     // a bar updated during the fade has lost its fadeAt and stays
     const gone = (await read($, plans)).filter(p => fading.includes(p.id) && p.fadeAt === now)
     for (const p of gone) forget(p.id)
+    await keep($, gone)
     if (gone.length > 0) await update($, plans, all => all.filter(p => !gone.some(g => g.id === p.id)))
     await syncStatus($)
   })
@@ -328,15 +340,19 @@ async function fadeBars($: EngineInterface, pick: (p: Plan) => boolean) {
 
 async function putPlan($: EngineInterface, next: Plan) {
   let prev: Plan | undefined
-  let evicted: string[] = []
+  let evicted: Plan[] = []
   await update($, plans, all => {
     prev = all.find(p => p.id === next.id)
     const placed = placeBar(all, next)
-    evicted = all.filter(p => !placed.some(x => x.id === p.id)).map(p => p.id)
+    evicted = all.filter(p => !placed.some(x => x.id === p.id))
     return placed
   })
-  evicted.forEach(forget)
-  if (!prev && next.id !== AGENTS) await update($, isOpen, () => true)
+  evicted.forEach(p => forget(p.id))
+  await keep($, evicted)
+  if (!prev && next.id !== AGENTS) {
+    await update($, recent, all => all.filter(p => p.id !== next.id))
+    await update($, isOpen, () => true)
+  }
   await syncStatus($)
 }
 
@@ -400,6 +416,7 @@ export const register: Register = on => {
   let workCalls = 0
   let sinceUpdate = 0
   let isNudged = false
+  let isMachineTurn = false
   // bars this main turn updated
   const touched = new Set<string>()
 
@@ -456,6 +473,7 @@ export const register: Register = on => {
 
   // the person answering, here or from a phone, clears "needs input"; open bars ride along as one short context line
   on('prompt.submit', async ($, e, next) => {
+    isMachineTurn = MACHINE_ORIGINS.has(e.origin.kind)
     if (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge') return next(e)
     const all = await read($, plans)
     if (all.some(p => p.state === 'needs_input')) {
@@ -500,10 +518,20 @@ export const register: Register = on => {
     const id = slug(str(raw.id, 60) || str(raw.title, 60))
     const all = await read($, plans)
     const prev = all.find(p => p.id === id) ?? null
-    const { plan: next, unknown } = normalize(raw, prev, now, id)
+    // closing a bar that already left is not a mistake worth a retry
+    const isClosing = (raw.state ?? raw.status) === 'done'
+    if (!prev && isClosing && raw.stages === undefined && raw.steps === undefined) return { result: `${id}: no open bar, nothing to close` }
+    // a bar that faded out comes back with its steps on its next update
+    const gone = prev ? undefined : (await read($, recent)).find(p => p.id === id)
+    let { plan: next, unknown } = normalize(raw, prev ?? gone ?? null, now, id)
+    let how = gone ? ' (restored)' : ''
+    const named = [...new Set([...titles(raw.done), ...titles(raw.active), ...titles(raw.failed)].map(t => str(t)).filter(Boolean))]
+    if (next.stages.length === 0 && !prev && !gone && raw.stages === undefined && raw.steps === undefined && named.length > 0) {
+      // a bar this session no longer holds: one stage from the titles the update names
+      ;({ plan: next, unknown } = normalize({ ...raw, title: str(raw.title, 60) || id, stages: [{ name: 'Steps', steps: named }] }, null, now, id))
+      how = ' (recreated from this update; send stages to restore the full plan)'
+    }
     if (next.stages.length === 0) {
-      // closing a bar that already left is not a mistake worth a retry
-      if (!prev && (raw.state ?? raw.status) === 'done') return { result: `${id}: no open bar, nothing to close` }
       const why = raw.stages !== undefined || raw.steps !== undefined ? `the stages for "${id}" have no steps` : `no bar "${id}" yet`
       const open = all.filter(isOpenPlan).map(p => p.id)
       const hint = open.length > 0 ? ` Open bars: ${open.join(', ')}.` : ''
@@ -515,7 +543,7 @@ export const register: Register = on => {
     const w = where(next)
     const left = next.stages.flatMap(s => s.steps).filter(st => !isFinished(st.status)).map(st => st.title)
     const miss = unknown.length > 0 ? `; no step titled ${unknown.map(t => `"${t}"`).join(', ')}, open steps: ${left.slice(0, 6).join(' | ') || 'none'}` : ''
-    return { result: `${id}: ${w.finished}/${w.total}, ${next.state}${w.activeTitle && next.state !== 'done' ? `, active "${w.activeTitle}"` : ''}${miss}` }
+    return { result: `${id}: ${w.finished}/${w.total}, ${next.state}${w.activeTitle && next.state !== 'done' ? `, active "${w.activeTitle}"` : ''}${miss}${how}` }
   })
 
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
@@ -614,15 +642,17 @@ export const register: Register = on => {
     }
     if (!agentId) {
       // the main turn ended: a running plan whose steps are all finished closes itself, any other pauses;
-      // an open bar this turn left alone ages, and one left alone for STALE_TURNS fades out
+      // an open bar a person's turn left alone ages, and one left alone for STALE_TURNS fades out
       const now = await $.clock.now()
+      const age = isMachineTurn ? 0 : 1
+      isMachineTurn = false
       let isChanged = false
       await update($, plans, all => {
         isChanged = false
         return all.map(p => {
           if (!isOpenPlan(p)) return p
           isChanged = true
-          const idleTurns = touched.has(p.id) ? 0 : (p.idleTurns ?? 0) + 1
+          const idleTurns = touched.has(p.id) ? 0 : (p.idleTurns ?? 0) + age
           const steps = p.stages.flatMap(s => s.steps)
           if (p.state !== 'running' || steps.length === 0) return { ...p, idleTurns }
           return steps.every(s => isFinished(s.status))

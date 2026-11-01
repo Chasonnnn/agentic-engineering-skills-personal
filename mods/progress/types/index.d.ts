@@ -32,6 +32,7 @@ export type TitleState = { last: string | null; isUserOwned: boolean; hasAsked: 
 
 declare module 'claude-code' {
   interface PluginState {
-    progress: { plans: Plan[]; isOpen: boolean; tick: number; title: TitleState }
+    // recent: bars that faded out or were evicted, so a later update brings one back
+    progress: { plans: Plan[]; recent: Plan[]; isOpen: boolean; tick: number; title: TitleState }
   }
 }
