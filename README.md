@@ -19,6 +19,13 @@ ln -s ~/agentic-engineering-skills-personal/no-use-effect ~/.claude/skills/no-us
 ln -s ~/agentic-engineering-skills-personal/opencode ~/.claude/skills/opencode
 ln -s ~/agentic-engineering-skills-personal/orchestrate ~/.claude/skills/orchestrate
 ln -s ~/agentic-engineering-skills-personal/review-and-remediate-server-logs ~/.claude/skills/review-and-remediate-server-logs
+ln -s ~/agentic-engineering-skills-personal/blast-radius ~/.claude/skills/blast-radius
+ln -s ~/agentic-engineering-skills-personal/bro ~/.claude/skills/bro
+ln -s ~/agentic-engineering-skills-personal/correct ~/.claude/skills/correct
+ln -s ~/agentic-engineering-skills-personal/ketchup ~/.claude/skills/ketchup
+ln -s ~/agentic-engineering-skills-personal/principle-explain-the-number ~/.claude/skills/principle-explain-the-number
+ln -s ~/agentic-engineering-skills-personal/principle-prove-it-works ~/.claude/skills/principle-prove-it-works
+ln -s ~/agentic-engineering-skills-personal/show-me-your-work ~/.claude/skills/show-me-your-work
 ```
 
 Mods (Claude Code function-hook plugins) load from `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`:
@@ -36,15 +43,22 @@ New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-
 | [agy](agy/SKILL.md) | User-invoked (`/agy`). Wraps the Antigravity CLI (`agy`) for a Gemini 4 Argon second opinion with the same review, challenge, and consult modes and verdict contract as `codex`. Pinned to `gemini-4-argon-high`; read-only by default. |
 | [ambitious](ambitious/SKILL.md) | User-invoked (`/ambitious`). Raises the current task along altitude, depth, and range, sets a measurable target with an outside check, then does the raised version. Based on [Felix Rieseberg's article](https://felixrieseberg.com/how-to-be-more-ambitious-a-tutorial-for-humans-with-models/). |
 | [audit-skill](audit-skill/SKILL.md) | Audit or improve skill instructions and helpers with source-specific evidence; includes optional comparison guidance and the Provencher article reference. |
-| [board-sync](board-sync/SKILL.md) | Sync planning state (specs/ADRs/roadmap) to a GitHub Project board as epic issues with nested sub-issues — epics on the board, slices hidden under them — plus an optional stale-issue refresh. |
 | [authmux](authmux/SKILL.md) | Resolve repository-bound authentication intent, verify provider identity evidence, route supported CLI commands through process-scoped contexts, and fail closed before wrong-account or wrong-project work. |
+| [blast-radius](blast-radius/SKILL.md) | Find what a change breaks beyond the diff before it ships, prove the one safety fact by running code, and check live state (active users, in-flight work, rollback) for deploys. Ported from pstack. |
+| [board-sync](board-sync/SKILL.md) | Sync planning state (specs/ADRs/roadmap) to a GitHub Project board as epic issues with nested sub-issues — epics on the board, slices hidden under them — plus an optional stale-issue refresh. |
+| [bro](bro/SKILL.md) | Restate the last reply in plain words when the user says "what do you mean" or "I don't understand". Ported from pstack. |
 | [codex](codex/SKILL.md) | Wraps the OpenAI Codex CLI for an independent second opinion: review (PASS/FAIL/INCOMPLETE on an explicit diff scope), challenge (adversarial break-it), consult (ask anything, with session continuity). Ported from [gstack](https://github.com/garrytan/gstack)'s `/codex` skill — see credit note below. |
+| [correct](correct/SKILL.md) | User-invoked (`/correct`). Turn repeated agent mistakes into checks that fail, highest level first (architecture, types, lint, test, docs), each proven on a past mistake. Ported from pstack. |
 | [dependency-modernization](dependency-modernization/SKILL.md) | Upgrade dependencies with official release review, local feature adoption, compatibility checks, and measured validation. |
 | [github-pr-validation-loop](github-pr-validation-loop/SKILL.md) | Audit open PRs against the current base branch, reimplement valid findings cleanly, close invalid or superseded noise with evidence, and monitor CI through completion. |
+| [ketchup](ketchup/SKILL.md) | Catch-up brief: what changed since the user's last message, live job and PR state, and numbered calls waiting on the user with a pick each. Ported from pstack. |
 | [no-use-effect](no-use-effect/SKILL.md) | Prefer explicit React data flow, replace ad-hoc Effects with derived state, event handlers, query libraries, or keyed remounting, and contain legitimate external synchronization in named hooks. |
 | [opencode](opencode/SKILL.md) | User-invoked (`/opencode`). Wraps the OpenCode CLI for a second opinion from any model it serves, with the same review, challenge, and consult modes and verdict contract as `codex`. Pinned to `cornell/nto.gemini-4-argon`; read-only by default through inline permission rules. |
 | [orchestrate](orchestrate/SKILL.md) | Coordinates delegates, independent review, and integration; shares CLI execution with `codex`. (Folded in from `orchestrate-skill` with history; that repo is archived.) |
+| [principle-explain-the-number](principle-explain-the-number/SKILL.md) | Reference principle (not auto-invoked): before trusting a metric, name its limiter, setup, data, spread, and rule out stale config or skipped work. The orchestrate review template points to it. Ported from pstack. |
+| [principle-prove-it-works](principle-prove-it-works/SKILL.md) | Reference principle (not auto-invoked): verify against the real artifact, not a proxy. The orchestrate review template points to it. Ported from pstack. |
 | [review-and-remediate-server-logs](review-and-remediate-server-logs/SKILL.md) | Review live server logs, prioritize actionable failures, reproduce and fix their causes, validate through CI, and verify the result after an authorized deployment. |
+| [show-me-your-work](show-me-your-work/SKILL.md) | Append-only TSV decision log, including user rulings, read at session start and after compaction so later sessions do not reopen settled questions. Ported from pstack. |
 
 ## Mods
 
@@ -61,6 +75,8 @@ New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-
 ## Credit
 
 `codex/` is a standalone port of the `/codex` skill from [gstack](https://github.com/garrytan/gstack) (Garry Tan, MIT license) — the original wraps the OpenAI Codex CLI as one of ~30 skills in a much larger multi-agent toolkit. This port keeps the review/challenge/consult mechanics and drops everything wired into gstack's own infrastructure (telemetry, question-tuning auto-decide, checkpoint mode, gbrain sync, the `D<N>` AskUserQuestion format), so it runs standalone with no dependency on gstack being installed.
+
+`blast-radius/`, `bro/`, `correct/`, `ketchup/`, `principle-explain-the-number/`, `principle-prove-it-works/` and `show-me-your-work/` are ported from [pstack](https://github.com/cursor/plugins/tree/main/pstack) (Lauren Tan, MIT license) on 2026-11-04. The ports drop the Cursor adapter and pstack cross-references, and map them to local skills (`orchestrate`, `codex`, `humanizer`, `dataviz`). They are maintained here and do not track upstream.
 
 ## Helper validation
 
