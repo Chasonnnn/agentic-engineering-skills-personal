@@ -20,7 +20,15 @@ check existing data and consumers. Assess whether tests exercise the claimed
 path. Report actionable defects with priority, file:line evidence and correction.
 Name omitted scope and distinguish static checks from executed tests. Missing
 evidence is incomplete review, not a clean verdict.
+Check each claim against the real artifact, not a proxy: the live process, the
+pulled revision, the actual value. For each reported metric (recall, F1,
+latency, test count), name what limits it and rule out stale config, skipped
+work, cached results and noise. Procedures:
+~/.agents/skills/principle-prove-it-works/SKILL.md and
+~/.agents/skills/principle-explain-the-number/SKILL.md.
 ```
+
+Add `~/.agents/skills/blast-radius/SKILL.md` to the gate when the change ships to live users or shared services.
 
 Codex uses the shared runner's `--review` response schema. Do not append a contradictory MERGE/PUSH output contract.
 
