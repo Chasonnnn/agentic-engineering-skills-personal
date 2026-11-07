@@ -14,7 +14,9 @@ python "$CODEX_SKILL_DIR/scripts/codex_run.py" \
 - Add `--model` and `--effort` only for the user's chosen values or the calling skill's configured role. Otherwise the CLI retains its configured model and reasoning effort (`~/.codex/config.toml`). Never pass a default effort of your own; forward only explicit supported overrides.
 - Add `--resume "$SESSION_ID"` for a contextual follow-up. Use an ID recorded for this task, never `--last`. A resumed reviewer is not a fresh independent reviewer.
 - Use `--sandbox workspace-write` only for an authorized implementation task. Sandbox selection does not grant external-action permission; keep that boundary in the task. Review prompts remain read-only. Configured connectors and host permissions still apply.
-- Set `--timeout` to the task's deadline (default 600 seconds). The host tool timeout must exceed it or use the host's background execution facility.
+- Set `--timeout` to the task's deadline (default 600 seconds). The host tool timeout must exceed it, or launch the run in the background as below.
+
+Launch a background run with the host's tracked facility: in Claude Code, Bash with `run_in_background: true`. Prefix the command with `caffeinate -s` on macOS. Do not detach with `nohup`, `setsid`, `disown`, or `&`: a detached run sends no completion notice. The hook `hooks/codex_launch_guard.py` blocks these forms. Within 60 seconds of launch, read `$RUN_DIR/stderr.txt` and `$RUN_DIR/events.jsonl` to confirm that the run started.
 
 The runner records the prompt, argv, JSONL events, stderr, final answer, and `result.json`. It passes prompts through stdin, captures producer exit status, requires a completed turn and nonempty final response, and bounds the local process group. No log parser prints model reasoning as a user answer.
 
