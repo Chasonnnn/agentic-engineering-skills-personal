@@ -18,6 +18,7 @@ ln -s ~/agentic-engineering-skills-personal/github-pr-validation-loop ~/.claude/
 ln -s ~/agentic-engineering-skills-personal/no-use-effect ~/.claude/skills/no-use-effect
 ln -s ~/agentic-engineering-skills-personal/opencode ~/.claude/skills/opencode
 ln -s ~/agentic-engineering-skills-personal/orchestrate ~/.claude/skills/orchestrate
+ln -s ~/agentic-engineering-skills-personal/retro ~/.claude/skills/retro
 ln -s ~/agentic-engineering-skills-personal/review-and-remediate-server-logs ~/.claude/skills/review-and-remediate-server-logs
 ln -s ~/agentic-engineering-skills-personal/blast-radius ~/.claude/skills/blast-radius
 ln -s ~/agentic-engineering-skills-personal/bro ~/.claude/skills/bro
@@ -26,6 +27,13 @@ ln -s ~/agentic-engineering-skills-personal/ketchup ~/.claude/skills/ketchup
 ln -s ~/agentic-engineering-skills-personal/principle-explain-the-number ~/.claude/skills/principle-explain-the-number
 ln -s ~/agentic-engineering-skills-personal/principle-prove-it-works ~/.claude/skills/principle-prove-it-works
 ln -s ~/agentic-engineering-skills-personal/show-me-your-work ~/.claude/skills/show-me-your-work
+```
+
+Workflows (Claude Code `Workflow` tool scripts) load from `~/.claude/workflows/`:
+
+```sh
+mkdir -p ~/.claude/workflows
+ln -s ~/agentic-engineering-skills-personal/workflows/retro-week.js ~/.claude/workflows/retro-week.js
 ```
 
 Mods (Claude Code function-hook plugins) load from `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`:
@@ -57,8 +65,15 @@ New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-
 | [orchestrate](orchestrate/SKILL.md) | Coordinates delegates, independent review, and integration; shares CLI execution with `codex`. (Folded in from `orchestrate-skill` with history; that repo is archived.) |
 | [principle-explain-the-number](principle-explain-the-number/SKILL.md) | Reference principle (not auto-invoked): before trusting a metric, name its limiter, setup, data, spread, and rule out stale config or skipped work. The orchestrate review template points to it. Ported from pstack. |
 | [principle-prove-it-works](principle-prove-it-works/SKILL.md) | Reference principle (not auto-invoked): verify against the real artifact, not a proxy. The orchestrate review template points to it. Ported from pstack. |
+| [retro](retro/SKILL.md) | User-invoked (`/retro`). Retrospective on a coding session: proposes environment fixes (navigation pointers, automated checks, reviewer rules, steering-file cleanup, tool economy, information access), ranked by severity. |
 | [review-and-remediate-server-logs](review-and-remediate-server-logs/SKILL.md) | Review live server logs, prioritize actionable failures, reproduce and fix their causes, validate through CI, and verify the result after an authorized deployment. |
 | [show-me-your-work](show-me-your-work/SKILL.md) | Append-only TSV decision log, including user rulings, read at session start and after compaction so later sessions do not reopen settled questions. Ported from pstack. |
+
+## Workflows
+
+| Workflow | What it does |
+| --- | --- |
+| [retro-week](workflows/retro-week.js) | Runs `retro` over every Claude Code session from the past N days, one agent per repo, then dedupes, ranks, and checks each finding against current repo state. Args: `{days: 7, today: "YYYY-MM-DD"}`. |
 
 ## Mods
 
