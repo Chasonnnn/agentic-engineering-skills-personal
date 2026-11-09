@@ -1,10 +1,20 @@
 # Conditional workflows
 
-## Independent review and repair
+## Review loop
 
-Assign a stable diff to a reviewer who did not implement it. Require scope, completion state, actionable findings with file:line evidence and corrections, and one line per check actually performed. P0/P1 blocks; incomplete coverage remains INCOMPLETE even with no findings. Codex reviews use the sibling skill's structured review contract. Other reviewers report the same information in prose. A review verdict expresses review status, not permission to merge or push.
+The loop has a fixed shape. Its input is the acceptance list written before implementation and a stable diff.
 
-Verify findings before repair. Resolve choices needed by the implementer in the repair assignment. Recheck prior findings and review the new delta; keep implementer and reviewer distinct for that round. The original finder may repair verified findings if another agent reviews its changes. Cap review-repair at three rounds per change. After the third round, stop dispatching repairs. Reassess the design, or surface the open findings with evidence to the user. Do not expand scope automatically.
+**Round 1.** Dispatch two independent reviewers at the same time: a fresh Astra run with `--review`, and a fresh Opus reviewer. Opus-built work needs only the Astra review. Each reviewer gets the acceptance list and the diff, runs the listed checks, and reports scope, completion state, findings with priority and file:line evidence, and one line per check performed. Incomplete coverage remains INCOMPLETE even with no findings.
+
+**Merge.** The orchestrator validates each finding against source, drops duplicates and false findings, resolves any choice the implementer would need, and writes one findings file. P0 and P1 block. P2 and P3 go to a follow-up list and do not enter the loop. Send the findings file once to the track's build lane (`--resume`).
+
+**Round 2.** Resume one round-1 reviewer (the Opus reviewer by default) with the findings file and the fix delta. It checks each listed finding and reads only the delta. It reports a new finding only at P0 or P1. No second reviewer runs in this round.
+
+**Stop.** The loop ends when no P0 or P1 is open. Two rounds is the default. A third round runs only when round 2 left fewer open findings than round 1. After round 3, stop dispatching repairs: reassess the design, or bring the open findings with evidence to the user. Never expand scope inside the loop.
+
+**Final gate.** A change to production-critical logic (auth, tenancy, migrations, scoring) gets one fresh reviewer over the final diff after the loop closes. Other changes do not.
+
+A review verdict expresses review status, not permission to merge or push.
 
 ## TDD and behavior-preserving refactors
 

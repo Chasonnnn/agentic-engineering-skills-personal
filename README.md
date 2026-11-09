@@ -29,6 +29,15 @@ ln -s ~/agentic-engineering-skills-personal/principle-prove-it-works ~/.claude/s
 ln -s ~/agentic-engineering-skills-personal/show-me-your-work ~/.claude/skills/show-me-your-work
 ```
 
+Agent definitions used by `orchestrate` load from `~/.claude/agents/`:
+
+```sh
+mkdir -p ~/.claude/agents
+for f in opus-high opus-xhigh opus-max sonnet-high; do
+  ln -s ~/agentic-engineering-skills-personal/agents/$f.md ~/.claude/agents/$f.md
+done
+```
+
 Workflows (Claude Code `Workflow` tool scripts) load from `~/.claude/workflows/`:
 
 ```sh

@@ -6,6 +6,8 @@ Resolve the canonical `orchestrate` directory through installation symlinks, the
 
 Pass the role defaults from `orchestrate/SKILL.md` explicitly unless the user/project overrides them. Select workspace-write for authorized implementation and read-only plus `--review` for a gate. Prepare a saved task prompt using the applicable template. Leave implementation uncommitted unless the assignment explicitly permits a local commit.
 
-A follow-up can resume the recorded session. A fresh independent review needs a fresh session. If a verified finding is routed to its finder for repair, that agent becomes the implementer for the new delta; assign another reviewer.
+Standing lanes: record the session ID from the first run's `result.json` in the dispatch plan. Send every later message for that track (repair list, next task, next plan-review round) with `--resume <session id>` and a new `--out` directory. Launch each resumed run as a tracked background command so its completion notice reaches the orchestrator. Build lanes use `--model gpt-6.1-sol --sandbox workspace-write`; design and review lanes use `--model gpt-6-astra --sandbox read-only`. Pass `--effort xhigh` on both.
+
+A round-1 review and a final gate need a fresh session. A resumed reviewer is not independent of its earlier rounds; use it only to verify a known findings list.
 
 The orchestrator owns task progress and recovery decisions. Use the runner's artifacts and actual process/repository state to diagnose interruptions. Do not infer a hang from silence or automatically resubmit potentially mutating work.
