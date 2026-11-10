@@ -20,7 +20,7 @@ Choose task boundaries, delegate ownership, and integration evidence. Use `codex
 | Codex design lane | `gpt-6-astra` | `xhigh` | On the user's explicit request only: work plan review, design critique, second opinions |
 | Codex build lane | `gpt-6.1-sol` | `xhigh` | Backend implementation, bug fixes, sequential tasks in one track |
 | Claude subagent | Opus 5.5 via the `opus-high` agent type | `high` | Frontend, artifacts, mock-ups, HTML pages, prompt text, code review |
-| Chore agent | Sonnet via the `sonnet-high` agent type | `high` | CI watch, board updates, log watch; read-only on code |
+| Chore agent | Sonnet via the `sonnet-high` agent type | `medium` | CI watch, board updates, log watch; read-only on code |
 
 Pass `--model` and `--effort` to the Codex runner for each lane; do not rely on `~/.codex/config.toml`. Use the agent types, whose frontmatter pins model and effort: the Agent tool's `model` field cannot express a full model ID, and an unpinned subagent inherits the session model. Escalate one task to `opus-xhigh` or `opus-max` only when it earns it. Fable is an orchestrator only: no Fable delegates, reviewers or raters.
 
