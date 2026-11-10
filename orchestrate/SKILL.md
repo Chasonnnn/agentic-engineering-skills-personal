@@ -17,14 +17,14 @@ Choose task boundaries, delegate ownership, and integration evidence. Use `codex
 | Role | Model | Effort | Work |
 |---|---|---|---|
 | Orchestrator | The session model (Fable or Opus, whichever panel runs this skill) | `high`; the user adjusts it | Decide scope, dispatch, validate findings, integrate, commit, report |
-| Codex design lane | `gpt-6-astra` | `xhigh` | Work plan review, design critique, second opinions, round-1 code review |
+| Codex design lane | `gpt-6-astra` | `xhigh` | On the user's explicit request only: work plan review, design critique, second opinions |
 | Codex build lane | `gpt-6.1-sol` | `xhigh` | Backend implementation, bug fixes, sequential tasks in one track |
 | Claude subagent | Opus 5.5 via the `opus-high` agent type | `high` | Frontend, artifacts, mock-ups, HTML pages, prompt text, code review |
 | Chore agent | Sonnet via the `sonnet-high` agent type | `high` | CI watch, board updates, log watch; read-only on code |
 
 Pass `--model` and `--effort` to the Codex runner for each lane; do not rely on `~/.codex/config.toml`. Use the agent types, whose frontmatter pins model and effort: the Agent tool's `model` field cannot express a full model ID, and an unpinned subagent inherits the session model. Escalate one task to `opus-xhigh` or `opus-max` only when it earns it. Fable is an orchestrator only: no Fable delegates, reviewers or raters.
 
-Implementation boundary: Sol owns backend work, including server-side code that lives in the frontend app (route handlers, server actions, proxies, auth plumbing). Opus owns React components, the design surface, and every mock-up, HTML page, decision book and review page. Opus writes all prompt, schema-description and participant-facing text; Codex writes none. Sol-built work gets an Astra and an Opus review; Opus-built work gets an Astra review.
+Implementation boundary: Sol owns backend work, including server-side code that lives in the frontend app (route handlers, server actions, proxies, auth plumbing). Opus owns React components, the design surface, and every mock-up, HTML page, decision book and review page. Opus writes all prompt, schema-description and participant-facing text; Codex writes none. One fresh Opus reviewer reviews all built work; there is no dual review. Astra runs only when the user explicitly asks for a second opinion, plan review or design critique. The orchestrator never dispatches Astra on its own judgment.
 
 These are installation defaults. Preserve explicit user/project choices and use available capabilities; do not silently substitute an unavailable model.
 
@@ -42,7 +42,7 @@ The orchestrator's turn must stay free to receive delegate reports and dispatch 
 Open one long-lived session per track and keep it for the whole track. Do not spawn a new agent per task.
 
 - **Build lane:** one Sol session per track, started with the runner and continued with `--resume <session id>`. It implements, repairs gate findings, and takes the track's next sequential task with its context intact. Record each lane's session ID, worktree and state in the dispatch plan.
-- **Design lane:** one Astra session per piece of work, resumed for each round of plan review or second opinion.
+- **Design lane:** opened only on the user's explicit request. One Astra session per piece of work, resumed for each round of plan review or second opinion.
 - **Opus lane:** one named Opus subagent per frontend track or review, continued with SendMessage.
 - Start a fresh session only for the final independent gate, for a stalled or exhausted lane, or for a new unrelated track.
 - **Remote machine:** when the project has an always-on second machine, send full suites, delivery checkpoints, stress runs and Docker lanes to it in its own worktree. The orchestrator's machine keeps short affected checks.
@@ -74,7 +74,7 @@ Sessions that orchestrate research (literature fan-outs, experiment audits, labe
 
 - Keep a dispatch ledger for the session: every delegated item with owner, state (queued, running, blocked, delivered, verified) and artifact path. Answer "what is running and what has not started" from the ledger, and advance every queued item before reporting; a request that was accepted but never dispatched is a failure to report on its own line.
 - Herdr peer panels (another Claude or Codex session in the same workspace) are collaborators, not delegates. Read a peer's panel before dispatching overlapping work. Changes to experiments, data or services owned by a peer go to that peer as a request; do not edit them from this session. Record what was handed off in the ledger.
-- Codex quota exhaustion is a distinct stall cause. When the CLI reports it, mark affected items blocked, move the build to an Opus lane and the gate to a second, fresh Opus reviewer, and resume the recorded Codex sessions when the user says quota is restored instead of redispatching from scratch.
+- Codex quota exhaustion is a distinct stall cause. When the CLI reports it, mark affected items blocked, move the build to an Opus lane, keep the gate with a fresh Opus reviewer, and resume the recorded Codex sessions when the user says quota is restored instead of redispatching from scratch.
 - Label, score and rubric adjudication uses blind evaluators across model families (one Astra, one Opus) with identical prompts and no access to each other's output. Compare agreement before treating either result as ground truth.
 - Around a launch or data-collection window, dispatch a read-only `sonnet-high` log-watcher on a fixed cadence (the user's stated interval, default 5 to 10 minutes) that reports errors and milestones and never restarts services or edits code.
 - Research and audit sessions end in an HTML report built by an Opus subagent unless the user asks for another format. Product and writing rules apply to it.

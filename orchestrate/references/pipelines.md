@@ -4,11 +4,11 @@
 
 The loop has a fixed shape. Its input is the acceptance list written before implementation and a stable diff.
 
-**Round 1.** Dispatch two independent reviewers at the same time: a fresh Astra run with `--review`, and a fresh Opus reviewer. Opus-built work needs only the Astra review. Each reviewer gets the acceptance list and the diff, runs the listed checks, and reports scope, completion state, findings with priority and file:line evidence, and one line per check performed. Incomplete coverage remains INCOMPLETE even with no findings.
+**Round 1.** Dispatch one fresh Opus reviewer. Add a fresh Astra run with `--review` only when the user explicitly asks for a second opinion on the change. Each reviewer gets the acceptance list and the diff, runs the listed checks, and reports scope, completion state, findings with priority and file:line evidence, and one line per check performed. Incomplete coverage remains INCOMPLETE even with no findings.
 
 **Merge.** The orchestrator validates each finding against source, drops duplicates and false findings, resolves any choice the implementer would need, and writes one findings file. P0 and P1 block. P2 and P3 go to a follow-up list and do not enter the loop. Send the findings file once to the track's build lane (`--resume`).
 
-**Round 2.** Resume one round-1 reviewer (the Opus reviewer by default) with the findings file and the fix delta. It checks each listed finding and reads only the delta. It reports a new finding only at P0 or P1. No second reviewer runs in this round.
+**Round 2.** Resume the round-1 Opus reviewer with the findings file and the fix delta. It checks each listed finding and reads only the delta. It reports a new finding only at P0 or P1. No second reviewer runs in this round.
 
 **Stop.** The loop ends when no P0 or P1 is open. Two rounds is the default. A third round runs only when round 2 left fewer open findings than round 1. After round 3, stop dispatching repairs: reassess the design, or bring the open findings with evidence to the user. Never expand scope inside the loop.
 
