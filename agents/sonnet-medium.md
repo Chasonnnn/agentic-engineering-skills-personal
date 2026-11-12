@@ -1,6 +1,6 @@
 ---
-name: sonnet-high
-description: Chore delegate pinned to Claude Sonnet at medium reasoning effort (the name is historical). Use for CI watching, board updates, and log watching. It never edits code, fixes failures, reruns jobs, or pushes.
+name: sonnet-medium
+description: Chore delegate pinned to Claude Sonnet at medium reasoning effort. Use for CI watching, board updates, and log watching. It never edits code, fixes failures, reruns jobs, or pushes.
 model: sonnet
 effort: medium
 ---

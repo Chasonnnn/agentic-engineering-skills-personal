@@ -20,7 +20,7 @@ Choose task boundaries, delegate ownership, and integration evidence. Use `codex
 | Codex design lane | `gpt-6-astra` | `xhigh` | On the user's explicit request only: work plan review, design critique, second opinions |
 | Codex build lane | `gpt-6.1-sol` | `xhigh` | Backend implementation, bug fixes, sequential tasks in one track |
 | Claude subagent | Opus 5.5 via the `opus-high` agent type | `high` | Frontend, artifacts, mock-ups, HTML pages, prompt text, code review |
-| Chore agent | Sonnet via the `sonnet-high` agent type | `medium` | CI watch, board updates, log watch; read-only on code |
+| Chore agent | Sonnet via the `sonnet-medium` agent type | `medium` | CI watch, board updates, log watch; read-only on code |
 
 Pass `--model` and `--effort` to the Codex runner for each lane; do not rely on `~/.codex/config.toml`. Use the agent types, whose frontmatter pins model and effort: the Agent tool's `model` field cannot express a full model ID, and an unpinned subagent inherits the session model. Escalate one task to `opus-xhigh` or `opus-max` only when it earns it. Fable is an orchestrator only: no Fable delegates, reviewers or raters.
 
@@ -75,7 +75,7 @@ Sessions that orchestrate research (literature fan-outs, experiment audits, labe
 - Keep a dispatch ledger for the session: every delegated item with owner, state (queued, running, blocked, delivered, verified) and artifact path. Answer "what is running and what has not started" from the ledger, and advance every queued item before reporting; a request that was accepted but never dispatched is a failure to report on its own line.
 - Herdr peer panels (another Claude or Codex session in the same workspace) are collaborators, not delegates. Read a peer's panel before dispatching overlapping work. Changes to experiments, data or services owned by a peer go to that peer as a request; do not edit them from this session. Record what was handed off in the ledger.
 - Codex quota exhaustion is a distinct stall cause. When the CLI reports it, mark affected items blocked, move the build to an Opus lane, keep the gate with a fresh Opus reviewer, and resume the recorded Codex sessions when the user says quota is restored instead of redispatching from scratch.
-- Around a launch or data-collection window, dispatch a read-only `sonnet-high` log-watcher on a fixed cadence (the user's stated interval, default 5 to 10 minutes) that reports errors and milestones and never restarts services or edits code.
+- Around a launch or data-collection window, dispatch a read-only `sonnet-medium` log-watcher on a fixed cadence (the user's stated interval, default 5 to 10 minutes) that reports errors and milestones and never restarts services or edits code.
 - Research and audit sessions end in an HTML report built by an Opus subagent unless the user asks for another format. Product and writing rules apply to it.
 
 Use [references/codex-recipes.md](references/codex-recipes.md) for Codex delegation and [references/subagent-recipes.md](references/subagent-recipes.md) for native or Claude agents. Use [references/prompt-templates.md](references/prompt-templates.md) only when constructing a dispatch. Do not load every reference by default.

@@ -33,7 +33,7 @@ Agent definitions used by `orchestrate` load from `~/.claude/agents/`:
 
 ```sh
 mkdir -p ~/.claude/agents
-for f in opus-high opus-xhigh opus-max sonnet-high Explore; do
+for f in opus-high opus-xhigh opus-max sonnet-medium Explore; do
   ln -s ~/agentic-engineering-skills-personal/agents/$f.md ~/.claude/agents/$f.md
 done
 ```
