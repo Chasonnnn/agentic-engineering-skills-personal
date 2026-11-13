@@ -27,11 +27,11 @@ One call can cover many items, such as each PR in a set awaiting merge. For each
 
 ## Write the reply
 
-Spend words on the calls, not on the story. Keep what happened under 100 words, and shorter when less happened. Leave out work that changed nothing for the user. Give each item about 30 words. The reply grows with the number of items. Never cut items or shrink them to stay under a word count: no count in place of a list, and no link in place of an item. A link can add depth, but the reply alone must be enough to decide.
+Spend words on the calls, not on the story. Keep what happened to a few sentences, and shorter when less happened. Leave out work that changed nothing for the user. Give each item a sentence or two. The reply grows with the number of items. Never cut items or shrink them to save space: no count in place of a list, and no link in place of an item. A link can add depth, but the reply alone must be enough to decide.
 
 Open with one short sentence that names what waits on the user, or says nothing does. If nothing happened and nothing waits on the user, say so and stop.
 
-Then sum up in one short bullet per thing the user asked for: what came of it, and whether it is done, still running, failed, or not checked. Write each line the way you would say it out loud: "Search was slow from a missing index", not "Search review: done". Name any bug found and fixed on the way. Each line must stay true when read alone. Never mark something done that still waits on the user. Under the summary, give at most three short lines that change what the user knows or must do. Then name in one line any work left that you can do yourself.
+Then sum up in one short bullet per thing the user asked for: what came of it, and whether it is done, still running, failed, or not checked. Write each line the way you would say it out loud: "Search was slow from a missing index", not "Search review: done". Name any bug found and fixed on the way. Each line must stay true when read alone. Never mark something done that still waits on the user. Under the summary, add only the short lines that change what the user knows or must do. Then name in one line any work left that you can do yourself.
 
 Then list the action items as a numbered list, so the user can answer "1. yes 2. no". Ask the call the user owns, such as merge, approve, relabel, or pick, and give your pick. A step you would take first goes in your pick. So does anything that must happen first, and anything that cannot be undone.
 
