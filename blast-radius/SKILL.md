@@ -36,7 +36,7 @@ Step 4 is usually one small script that imports the same library the app ships a
    - The check you will run right after the deploy to confirm it worked.
 5. Be honest about each risk. Give it a real chance of happening and a real cost if it does. Keep the risks you confirmed. List the ones you checked and cleared separately. Cite a real `file:line`. A search that finds nothing is still an answer. Never make up a caller or an API.
 6. Prove the one fact. Write a script or test that runs the real code, run it, and paste what happened.
-7. For a big or wide change, get a second opinion from another model family with the `codex` skill in challenge mode, and merge the findings. Different models catch different real bugs.
+7. For a big or wide change, tell the user that a second opinion from another model family can catch different real bugs, and name `/codex` in challenge mode for it. Run it when the user asks, and merge the findings.
 
 ## What to hand back
 

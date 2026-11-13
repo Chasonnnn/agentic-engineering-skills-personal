@@ -66,9 +66,9 @@ At the end of the run, before handing back, check the log told the truth. Read t
 
 Correct the log, not the story. The audit never edits or removes a row. When a row's claim or evidence is wrong, add a row that supersedes it with what actually happened and a pointer that resolves.
 
-## Cross-model review of the trail
+## Independent review of the trail
 
-For a committed log, or a run longer than a few hours, have a reviewer from a different model family read the trail and the transcript. Follow the model split in the `orchestrate` skill: Claude-made work gets a Codex review through the `codex` skill; Codex-made work gets an `opus-xhigh` subagent. Self-review is not a substitute. The reviewer scans for what the user should look at; it does not redo the work:
+For a committed log, or a run longer than a few hours, have a fresh reviewer that did not do the work read the trail and the transcript. Use the reviewer that the `orchestrate` skill names. Self-review is not a substitute. The reviewer scans for what the user should look at; it does not redo the work:
 
 - Decisions logged with weak or absent evidence.
 - Verification steps skipped or claimed without proof in the transcript.
