@@ -34,7 +34,7 @@ The orchestrator's turn must stay free to receive delegate reports and dispatch 
 
 - The orchestrator dispatches, reads reports, decides, and commits. It implements nothing, including one-line follow-ups and test fixes; those go to the standing lane that owns the track.
 - Any command that can exceed about 2 minutes (full suites, builds, browser QA, data jobs) runs as a tracked background command or on a delegate, never in the foreground.
-- Each delegate writes its full report to a file and returns at most five lines: verdict, counts, the report path, and what it needs. Read the file only when a decision depends on it.
+- Each delegate writes its full report to a file and replies with only the verdict, counts, the report path, and what it needs; name the report path in every brief. Read the file only when a decision depends on it.
 - Never wait on one delegate while dispatchable work exists.
 
 ## Standing lanes
