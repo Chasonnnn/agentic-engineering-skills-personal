@@ -17,8 +17,8 @@ Choose task boundaries, delegate ownership, and integration evidence. Use `codex
 | Role | Model | Effort | Work |
 |---|---|---|---|
 | Orchestrator | The session model (Fable or Opus, whichever panel runs this skill) | `high`; the user adjusts it | Decide scope, dispatch, validate findings, integrate, commit, report |
-| Codex design lane | `gpt-6-astra` | `xhigh` | On the user's explicit request only: work plan review, design critique, second opinions |
-| Codex build lane | `gpt-6.1-sol` | `xhigh` | Backend implementation, bug fixes, sequential tasks in one track |
+| Codex design lane | `gpt-6.2-astra` | `xhigh` | On the user's explicit request only: work plan review, design critique, second opinions |
+| Codex build lane | `gpt-6.2-sol` | `xhigh` | Backend implementation, bug fixes, sequential tasks in one track |
 | Claude subagent | Opus 5.5 via the `opus-high` agent type | `high` | Frontend, artifacts, mock-ups, HTML pages, prompt text, code review |
 | Chore agent | Sonnet via the `sonnet-medium` agent type | `medium` | CI watch, board updates, log watch; read-only on code |
 
