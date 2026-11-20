@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 # Pinned by the owner: the opencode.json default model failed gateway auth when this skill was written.
-DEFAULT_MODEL = 'cornell/nto.gemini-4-argon'
+DEFAULT_MODEL = 'cornell/nto.gemini-4-carbon#high'
 # OpenCode allows writes and shell commands by default, with no sandbox; access is enforced by inline config.
 COMMAND_ACTIONS = ('shell', 'bash', 'execute', 'subagent', 'task')
 DENIED_ACTIONS = {
