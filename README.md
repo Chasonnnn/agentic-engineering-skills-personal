@@ -14,6 +14,7 @@ ln -s ~/agentic-engineering-skills-personal/audit-skill ~/.claude/skills/audit-s
 ln -s ~/agentic-engineering-skills-personal/board-sync ~/.claude/skills/board-sync
 ln -s ~/agentic-engineering-skills-personal/authmux ~/.claude/skills/authmux
 ln -s ~/agentic-engineering-skills-personal/codex ~/.claude/skills/codex
+ln -s ~/agentic-engineering-skills-personal/comment-audit ~/.claude/skills/comment-audit
 ln -s ~/agentic-engineering-skills-personal/github-pr-validation-loop ~/.claude/skills/github-pr-validation-loop
 ln -s ~/agentic-engineering-skills-personal/no-use-effect ~/.claude/skills/no-use-effect
 ln -s ~/agentic-engineering-skills-personal/opencode ~/.claude/skills/opencode
@@ -65,6 +66,7 @@ New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-
 | [board-sync](board-sync/SKILL.md) | Sync planning state (specs/ADRs/roadmap) to a GitHub Project board as epic issues with nested sub-issues — epics on the board, slices hidden under them — plus an optional stale-issue refresh. |
 | [bro](bro/SKILL.md) | Restate the last reply in plain words when the user says "what do you mean" or "I don't understand". Ported from pstack. |
 | [codex](codex/SKILL.md) | Wraps the OpenAI Codex CLI for an independent second opinion: review (PASS/FAIL/INCOMPLETE on an explicit diff scope), challenge (adversarial break-it), consult (ask anything, with session continuity). Ported from [gstack](https://github.com/garrytan/gstack)'s `/codex` skill — see credit note below. |
+| [comment-audit](comment-audit/SKILL.md) | User-invoked (`/comment-audit`). Audits code comments in a repository, path, or diff: profiles a random sample into tautology, excuse, stale, and decision record, then repairs, deletes, files, or moves comments as the rates and the user's approvals allow. Traces each verdict before a change, proves comment-only diffs, and requires an independent review. Deletion is opt-in. |
 | [correct](correct/SKILL.md) | User-invoked (`/correct`). Turn repeated agent mistakes into checks that fail, highest level first (architecture, types, lint, test, docs), each proven on a past mistake. Ported from pstack. |
 | [dependency-modernization](dependency-modernization/SKILL.md) | Upgrade dependencies with official release review, local feature adoption, compatibility checks, and measured validation. |
 | [github-pr-validation-loop](github-pr-validation-loop/SKILL.md) | Audit open PRs against the current base branch, reimplement valid findings cleanly, close invalid or superseded noise with evidence, and monitor CI through completion. |
@@ -102,6 +104,8 @@ New machines: repeat both steps. Updating: `git -C ~/agentic-engineering-skills-
 
 `blast-radius/`, `bro/`, `correct/`, `ketchup/`, `principle-explain-the-number/`, `principle-prove-it-works/` and `show-me-your-work/` are ported from [pstack](https://github.com/cursor/plugins/tree/main/pstack) (Lauren Tan, MIT license) on 2026-11-04. The ports drop the Cursor adapter and pstack cross-references, and map them to local skills (`orchestrate`, `codex`, `humanizer`, `dataviz`). They are maintained here and do not track upstream.
 
+`comment-audit/` takes its four categories from a comment-cleanup prompt the owner supplied (source not recorded) and its constraint-comment step from pstack's `no-comments`. The profile step, the branches, and the guards come from an audit run in November 2026; see its field notes.
+
 ## Helper validation
 
 Use the approved project/host Python runtime. Helpers use the standard library.
@@ -109,6 +113,7 @@ Use the approved project/host Python runtime. Helpers use the standard library.
 ```sh
 claude plugin validate mods/progress && claude plugin test mods/progress
 python -m unittest discover -s codex/tests -v
+python -m unittest discover -s comment-audit/tests -v
 python -m unittest discover -s github-pr-validation-loop/tests -v
 ```
 
